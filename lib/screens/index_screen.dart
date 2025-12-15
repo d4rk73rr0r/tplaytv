@@ -203,10 +203,21 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
   final FocusNode _contentFocusNode = FocusNode();
   int _selectedSectionIndex = 0;
   int _selectedItemIndex = 0;
+  
+  // Scroll controller for vertical scrolling
+  late ScrollController _scrollController;
+  
+  // Global keys for sections to enable scrolling
+  final GlobalKey _bannerKey = GlobalKey();
+  final GlobalKey _latestViewedKey = GlobalKey();
+  final GlobalKey _recommendedKey = GlobalKey();
+  final GlobalKey _genresKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
+    
+    _scrollController = ScrollController();
     
     // Request focus after frame is built
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -238,6 +249,7 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
   void dispose() {
     _connectivitySubscription?.cancel();
     _contentFocusNode.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -436,6 +448,49 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
     return newFilms.take(20).toList();
   }
 
+  // Scroll to the selected section
+  void _scrollToSelectedSection() {
+    GlobalKey? key;
+    int currentSection = 0;
+    final provider = Provider.of<IndexScreenProvider>(context, listen: false);
+    
+    if (provider.banners.isNotEmpty) {
+      if (currentSection == _selectedSectionIndex) key = _bannerKey;
+      currentSection++;
+    }
+    
+    if (provider.latestViewed.isNotEmpty) {
+      if (currentSection == _selectedSectionIndex) key = _latestViewedKey;
+      currentSection++;
+    }
+    
+    if (provider.recommendedFilms.isNotEmpty) {
+      if (currentSection == _selectedSectionIndex) key = _recommendedKey;
+      currentSection++;
+    }
+    
+    if (provider.genresPreview.isNotEmpty) {
+      if (currentSection == _selectedSectionIndex) key = _genresKey;
+      currentSection++;
+    }
+    
+    // For category sections, we don't have individual keys, so scroll to the first category
+    if (provider.categories.isNotEmpty && 
+        _selectedSectionIndex >= currentSection && 
+        _selectedSectionIndex < currentSection + provider.categories.length) {
+      key = _genresKey; // Scroll to genres section as a reference point
+    }
+    
+    if (key != null && key.currentContext != null) {
+      Scrollable.ensureVisible(
+        key.currentContext!,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+        alignment: 0.0,
+      );
+    }
+  }
+
   // TV Remote control key event handler
   KeyEventResult _handleContentKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
@@ -460,6 +515,7 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
           _selectedItemIndex = 0;
         }
       });
+      _scrollToSelectedSection();
       return KeyEventResult.handled;
     }
 
@@ -471,6 +527,7 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
           _selectedItemIndex = 0;
         }
       });
+      _scrollToSelectedSection();
       return KeyEventResult.handled;
     }
 
@@ -486,11 +543,19 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
       return KeyEventResult.handled;
     }
 
-    // Handle arrow left - move to previous item in section
+    // Handle arrow left - move to previous item in section or show info
     if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
       setState(() {
         if (_selectedItemIndex > 0) {
           _selectedItemIndex--;
+        } else {
+          // At the first item - show a message or open drawer if available
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Chap tomondagi menyuga qaytish uchun Back tugmasini bosing'),
+              duration: Duration(seconds: 2),
+            ),
+          );
         }
       });
       return KeyEventResult.handled;
@@ -690,14 +755,18 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
         onKeyEvent: _handleContentKeyEvent,
         child: SafeArea(
           child: SingleChildScrollView(
+            controller: _scrollController,
             physics: const AlwaysScrollableScrollPhysics(),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 provider.banners.isNotEmpty
-                    ? BannerCarousel(
-                      isSelected: _selectedSectionIndex == 0,
-                      selectedIndex: _selectedItemIndex,
+                    ? Container(
+                      key: _bannerKey,
+                      child: BannerCarousel(
+                        isSelected: _selectedSectionIndex == 0,
+                        selectedIndex: _selectedItemIndex,
+                      ),
                     )
                     : const SizedBox(
                       height: 300,
@@ -709,18 +778,27 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
                       ),
                     ),
                 if (provider.latestViewed.isNotEmpty) 
-                  LatestViewedSection(
-                    isSelected: _selectedSectionIndex == (provider.banners.isNotEmpty ? 1 : 0),
+                  Container(
+                    key: _latestViewedKey,
+                    child: LatestViewedSection(
+                      isSelected: _selectedSectionIndex == (provider.banners.isNotEmpty ? 1 : 0),
+                      selectedIndex: _selectedItemIndex,
+                    ),
+                  ),
+                Container(
+                  key: _recommendedKey,
+                  child: RecommendedFilmsSection(
+                    isSelected: _selectedSectionIndex == _getRecommendedSectionIndex(),
                     selectedIndex: _selectedItemIndex,
                   ),
-                RecommendedFilmsSection(
-                  isSelected: _selectedSectionIndex == _getRecommendedSectionIndex(),
-                  selectedIndex: _selectedItemIndex,
                 ),
-                GenresSection(
-                  onRetry: _onRetry,
-                  isSelected: _selectedSectionIndex == _getGenresSectionIndex(),
-                  selectedIndex: _selectedItemIndex,
+                Container(
+                  key: _genresKey,
+                  child: GenresSection(
+                    onRetry: _onRetry,
+                    isSelected: _selectedSectionIndex == _getGenresSectionIndex(),
+                    selectedIndex: _selectedItemIndex,
+                  ),
                 ),
                 CategoriesSection(
                   baseSectionIndex: _getCategoriesSectionIndex(),
