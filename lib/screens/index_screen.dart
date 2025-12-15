@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
@@ -197,10 +198,20 @@ class IndexScreenContent extends StatefulWidget {
 
 class _IndexScreenContentState extends State<IndexScreenContent> {
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  
+  // Focus nodes for TV remote control
+  final FocusNode _contentFocusNode = FocusNode();
+  int _selectedSectionIndex = 0;
+  int _selectedItemIndex = 0;
 
   @override
   void initState() {
     super.initState();
+    
+    // Request focus after frame is built
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _contentFocusNode.requestFocus();
+    });
     _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
       List<ConnectivityResult> results,
     ) {
@@ -226,6 +237,7 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
   @override
   void dispose() {
     _connectivitySubscription?.cancel();
+    _contentFocusNode.dispose();
     super.dispose();
   }
 
@@ -424,6 +436,207 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
     return newFilms.take(20).toList();
   }
 
+  // TV Remote control key event handler
+  KeyEventResult _handleContentKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+    final provider = Provider.of<IndexScreenProvider>(context, listen: false);
+    
+    // Count available sections
+    int sectionCount = 0;
+    if (provider.banners.isNotEmpty) sectionCount++;
+    if (provider.latestViewed.isNotEmpty) sectionCount++;
+    if (provider.recommendedFilms.isNotEmpty) sectionCount++;
+    if (provider.genresPreview.isNotEmpty) sectionCount++;
+    if (provider.categories.isNotEmpty) sectionCount += provider.categories.length;
+
+    if (sectionCount == 0) return KeyEventResult.ignored;
+
+    // Handle arrow down - move to next section
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      setState(() {
+        if (_selectedSectionIndex < sectionCount - 1) {
+          _selectedSectionIndex++;
+          _selectedItemIndex = 0;
+        }
+      });
+      return KeyEventResult.handled;
+    }
+
+    // Handle arrow up - move to previous section
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      setState(() {
+        if (_selectedSectionIndex > 0) {
+          _selectedSectionIndex--;
+          _selectedItemIndex = 0;
+        }
+      });
+      return KeyEventResult.handled;
+    }
+
+    // Handle arrow right - move to next item in section
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      setState(() {
+        // Get the current section's item count
+        int maxItems = _getMaxItemsForSection(_selectedSectionIndex, provider);
+        if (_selectedItemIndex < maxItems - 1) {
+          _selectedItemIndex++;
+        }
+      });
+      return KeyEventResult.handled;
+    }
+
+    // Handle arrow left - move to previous item in section
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      setState(() {
+        if (_selectedItemIndex > 0) {
+          _selectedItemIndex--;
+        }
+      });
+      return KeyEventResult.handled;
+    }
+
+    // Handle select/enter - activate selected item
+    if (event.logicalKey == LogicalKeyboardKey.select ||
+        event.logicalKey == LogicalKeyboardKey.enter) {
+      _activateSelectedItem(provider);
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
+  int _getMaxItemsForSection(int sectionIndex, IndexScreenProvider provider) {
+    int currentSection = 0;
+    
+    // Banner section
+    if (provider.banners.isNotEmpty) {
+      if (currentSection == sectionIndex) return provider.banners.length;
+      currentSection++;
+    }
+    
+    // Latest viewed section
+    if (provider.latestViewed.isNotEmpty) {
+      if (currentSection == sectionIndex) return provider.latestViewed.length;
+      currentSection++;
+    }
+    
+    // Recommended section
+    if (provider.recommendedFilms.isNotEmpty) {
+      if (currentSection == sectionIndex) return provider.recommendedFilms.length;
+      currentSection++;
+    }
+    
+    // Genres section
+    if (provider.genresPreview.isNotEmpty) {
+      if (currentSection == sectionIndex) return provider.genresPreview.length;
+      currentSection++;
+    }
+    
+    // Category sections
+    for (var category in provider.categories) {
+      final categoryId = category['id'];
+      final films = provider.categoryFilms[categoryId] ?? [];
+      if (currentSection == sectionIndex) return films.isNotEmpty ? films.length : 1;
+      currentSection++;
+    }
+    
+    return 1;
+  }
+
+  void _activateSelectedItem(IndexScreenProvider provider) {
+    int currentSection = 0;
+    
+    // Banner section
+    if (provider.banners.isNotEmpty) {
+      if (currentSection == _selectedSectionIndex) {
+        final banner = provider.banners[_selectedItemIndex];
+        final film = banner['film'] as Map<String, dynamic>? ?? {};
+        final filmId = film['id'] ?? 0;
+        if (filmId != 0) {
+          Navigator.push(context, createSlideRoute(FilmScreen(filmId: filmId)));
+        }
+        return;
+      }
+      currentSection++;
+    }
+    
+    // Latest viewed section
+    if (provider.latestViewed.isNotEmpty) {
+      if (currentSection == _selectedSectionIndex) {
+        final item = provider.latestViewed[_selectedItemIndex];
+        final film = item['film'] as Map<String, dynamic>? ?? {};
+        final filmId = film['id'] ?? 0;
+        if (filmId != 0) {
+          Navigator.push(context, createSlideRoute(FilmScreen(filmId: filmId)));
+        }
+        return;
+      }
+      currentSection++;
+    }
+    
+    // Recommended section
+    if (provider.recommendedFilms.isNotEmpty) {
+      if (currentSection == _selectedSectionIndex) {
+        final film = provider.recommendedFilms[_selectedItemIndex];
+        final filmId = film['id'];
+        Navigator.push(context, createSlideRoute(FilmScreen(filmId: filmId)));
+        return;
+      }
+      currentSection++;
+    }
+    
+    // Genres section
+    if (provider.genresPreview.isNotEmpty) {
+      if (currentSection == _selectedSectionIndex) {
+        final genre = provider.genresPreview[_selectedItemIndex];
+        Navigator.push(context, createSlideRoute(GenresFilmsScreen(genre: genre)));
+        return;
+      }
+      currentSection++;
+    }
+    
+    // Category sections
+    for (var category in provider.categories) {
+      final categoryId = category['id'];
+      final films = provider.categoryFilms[categoryId] ?? [];
+      if (currentSection == _selectedSectionIndex && films.isNotEmpty) {
+        final film = films[_selectedItemIndex];
+        final filmId = film['id'];
+        Navigator.push(context, createSlideRoute(FilmScreen(filmId: filmId)));
+        return;
+      }
+      currentSection++;
+    }
+  }
+
+  int _getRecommendedSectionIndex() {
+    final provider = Provider.of<IndexScreenProvider>(context, listen: false);
+    int index = 0;
+    if (provider.banners.isNotEmpty) index++;
+    if (provider.latestViewed.isNotEmpty) index++;
+    return index;
+  }
+
+  int _getGenresSectionIndex() {
+    final provider = Provider.of<IndexScreenProvider>(context, listen: false);
+    int index = 0;
+    if (provider.banners.isNotEmpty) index++;
+    if (provider.latestViewed.isNotEmpty) index++;
+    if (provider.recommendedFilms.isNotEmpty) index++;
+    return index;
+  }
+
+  int _getCategoriesSectionIndex() {
+    final provider = Provider.of<IndexScreenProvider>(context, listen: false);
+    int index = 0;
+    if (provider.banners.isNotEmpty) index++;
+    if (provider.latestViewed.isNotEmpty) index++;
+    if (provider.recommendedFilms.isNotEmpty) index++;
+    if (provider.genresPreview.isNotEmpty) index++;
+    return index;
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<IndexScreenProvider>(context);
@@ -472,29 +685,51 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
           ),
         ],
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              provider.banners.isNotEmpty
-                  ? const BannerCarousel()
-                  : const SizedBox(
-                    height: 300,
-                    child: Center(
-                      child: Text(
-                        'Bannerlar mavjud emas',
-                        style: TextStyle(fontSize: 20, color: Colors.white),
+      body: Focus(
+        focusNode: _contentFocusNode,
+        onKeyEvent: _handleContentKeyEvent,
+        child: SafeArea(
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                provider.banners.isNotEmpty
+                    ? BannerCarousel(
+                      isSelected: _selectedSectionIndex == 0,
+                      selectedIndex: _selectedItemIndex,
+                    )
+                    : const SizedBox(
+                      height: 300,
+                      child: Center(
+                        child: Text(
+                          'Bannerlar mavjud emas',
+                          style: TextStyle(fontSize: 20, color: Colors.white),
+                        ),
                       ),
                     ),
+                if (provider.latestViewed.isNotEmpty) 
+                  LatestViewedSection(
+                    isSelected: _selectedSectionIndex == (provider.banners.isNotEmpty ? 1 : 0),
+                    selectedIndex: _selectedItemIndex,
                   ),
-              if (provider.latestViewed.isNotEmpty) const LatestViewedSection(),
-              const RecommendedFilmsSection(),
-              GenresSection(onRetry: _onRetry),
-              const CategoriesSection(),
-              const SizedBox(height: 100),
-            ],
+                RecommendedFilmsSection(
+                  isSelected: _selectedSectionIndex == _getRecommendedSectionIndex(),
+                  selectedIndex: _selectedItemIndex,
+                ),
+                GenresSection(
+                  onRetry: _onRetry,
+                  isSelected: _selectedSectionIndex == _getGenresSectionIndex(),
+                  selectedIndex: _selectedItemIndex,
+                ),
+                CategoriesSection(
+                  baseSectionIndex: _getCategoriesSectionIndex(),
+                  selectedSectionIndex: _selectedSectionIndex,
+                  selectedItemIndex: _selectedItemIndex,
+                ),
+                const SizedBox(height: 100),
+              ],
+            ),
           ),
         ),
       ),
@@ -559,7 +794,14 @@ class ErrorScreen extends StatelessWidget {
 
 // BannerCarousel
 class BannerCarousel extends StatefulWidget {
-  const BannerCarousel({super.key});
+  final bool isSelected;
+  final int selectedIndex;
+  
+  const BannerCarousel({
+    super.key,
+    this.isSelected = false,
+    this.selectedIndex = 0,
+  });
 
   @override
   State<BannerCarousel> createState() => _BannerCarouselState();
@@ -591,6 +833,15 @@ class _BannerCarouselState extends State<BannerCarousel>
   }
 
   @override
+  void didUpdateWidget(BannerCarousel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Sync carousel with remote control selection
+    if (widget.isSelected && widget.selectedIndex != _currentIndex) {
+      _carouselController.animateToPage(widget.selectedIndex);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final provider = Provider.of<IndexScreenProvider>(context);
     final banners = provider.banners;
@@ -615,10 +866,16 @@ class _BannerCarouselState extends State<BannerCarousel>
             },
           ),
           items:
-              banners.map((banner) {
+              banners.asMap().entries.map((entry) {
+                final index = entry.key;
+                final banner = entry.value;
+                final isSelected = widget.isSelected && widget.selectedIndex == index;
                 return Builder(
                   builder: (BuildContext context) {
-                    return BannerItem(banner: banner);
+                    return BannerItem(
+                      banner: banner,
+                      isSelected: isSelected,
+                    );
                   },
                 );
               }).toList(),
@@ -709,8 +966,13 @@ class CircleProgressPainter extends CustomPainter {
 // Banner Item
 class BannerItem extends StatelessWidget {
   final dynamic banner;
+  final bool isSelected;
 
-  const BannerItem({super.key, required this.banner});
+  const BannerItem({
+    super.key,
+    required this.banner,
+    this.isSelected = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -726,40 +988,37 @@ class BannerItem extends StatelessWidget {
     final imdbRating = film['imdb_rating']?.toString() ?? 'N/A';
     final filmId = film['id'] ?? 0;
 
-    return FocusScope(
-      child: Builder(
-        builder: (context) {
-          final focusNode = FocusNode();
-          return GestureDetector(
-            onTap: () {
-              Navigator.push(
-                context,
-                createSlideRoute(FilmScreen(filmId: filmId)),
-              );
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              transform:
-                  FocusScope.of(context).hasFocus
-                      ? Matrix4.identity().scaled(1.05)
-                      : Matrix4.identity(),
-              margin: const EdgeInsets.symmetric(horizontal: 8.0),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                boxShadow:
-                    FocusScope.of(context).hasFocus
-                        ? [
-                          BoxShadow(
-                            color: Colors.yellow.withOpacity(0.3),
-                            blurRadius: 8,
-                          ),
-                        ]
-                        : null,
-                border:
-                    FocusScope.of(context).hasFocus
-                        ? Border.all(color: Colors.yellow, width: 2)
-                        : null,
-              ),
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          createSlideRoute(FilmScreen(filmId: filmId)),
+        );
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        transform:
+            isSelected
+                ? Matrix4.identity().scaled(1.05)
+                : Matrix4.identity(),
+        margin: const EdgeInsets.symmetric(horizontal: 8.0),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          boxShadow:
+              isSelected
+                  ? [
+                    BoxShadow(
+                      color: Colors.yellow.withOpacity(0.5),
+                      blurRadius: 15,
+                      spreadRadius: 3,
+                    ),
+                  ]
+                  : null,
+          border:
+              isSelected
+                  ? Border.all(color: Colors.yellow, width: 3)
+                  : null,
+        ),
               child: Stack(
                 children: [
                   ClipRRect(
@@ -889,7 +1148,14 @@ class BannerItem extends StatelessWidget {
 
 // Latest Viewed Section
 class LatestViewedSection extends StatelessWidget {
-  const LatestViewedSection({super.key});
+  final bool isSelected;
+  final int selectedIndex;
+  
+  const LatestViewedSection({
+    super.key,
+    this.isSelected = false,
+    this.selectedIndex = 0,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -945,7 +1211,11 @@ class LatestViewedSection extends StatelessWidget {
               itemExtent: 200,
               cacheExtent: 500,
               itemBuilder: (context, index) {
-                return LatestViewedItem(item: latestViewed[index]);
+                final itemSelected = isSelected && selectedIndex == index;
+                return LatestViewedItem(
+                  item: latestViewed[index],
+                  isSelected: itemSelected,
+                );
               },
             ),
           ),
@@ -958,8 +1228,13 @@ class LatestViewedSection extends StatelessWidget {
 // Latest Viewed Item
 class LatestViewedItem extends StatelessWidget {
   final dynamic item;
+  final bool isSelected;
 
-  const LatestViewedItem({super.key, required this.item});
+  const LatestViewedItem({
+    super.key,
+    required this.item,
+    this.isSelected = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -987,48 +1262,45 @@ class LatestViewedItem extends StatelessWidget {
         '${viewedMinutes.toString().padLeft(2, '0')}:${viewedSeconds.toString().padLeft(2, '0')}';
     final double progress = viewedTime / (playbackTime * 60);
 
-    return FocusScope(
-      child: Builder(
-        builder: (context) {
-          final focusNode = FocusNode();
-          return GestureDetector(
-            onTap: () {
-              Navigator.push(
-                context,
-                createSlideRoute(FilmScreen(filmId: filmId)),
-              );
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              transform:
-                  FocusScope.of(context).hasFocus
-                      ? (Matrix4.identity()..scale(1.05))
-                      : Matrix4.identity(),
-              width: 190,
-              margin: const EdgeInsets.only(right: 16),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                image: DecorationImage(
-                  image: CachedNetworkImageProvider(
-                    imageUrl,
-                    cacheManager: customCacheManager,
-                  ),
-                  fit: BoxFit.cover,
-                ),
-                boxShadow:
-                    FocusScope.of(context).hasFocus
-                        ? [
-                          BoxShadow(
-                            color: Colors.yellow.withOpacity(0.3),
-                            blurRadius: 8,
-                          ),
-                        ]
-                        : null,
-                border:
-                    FocusScope.of(context).hasFocus
-                        ? Border.all(color: Colors.yellow, width: 2)
-                        : null,
-              ),
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          createSlideRoute(FilmScreen(filmId: filmId)),
+        );
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        transform:
+            isSelected
+                ? (Matrix4.identity()..scale(1.05))
+                : Matrix4.identity(),
+        width: 190,
+        margin: const EdgeInsets.only(right: 16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          image: DecorationImage(
+            image: CachedNetworkImageProvider(
+              imageUrl,
+              cacheManager: customCacheManager,
+            ),
+            fit: BoxFit.cover,
+          ),
+          boxShadow:
+              isSelected
+                  ? [
+                    BoxShadow(
+                      color: Colors.yellow.withOpacity(0.5),
+                      blurRadius: 15,
+                      spreadRadius: 3,
+                    ),
+                  ]
+                  : null,
+          border:
+              isSelected
+                  ? Border.all(color: Colors.yellow, width: 3)
+                  : null,
+        ),
               child: Stack(
                 children: [
                   Positioned(
@@ -1081,7 +1353,14 @@ class LatestViewedItem extends StatelessWidget {
 
 // Recommended Films Section
 class RecommendedFilmsSection extends StatelessWidget {
-  const RecommendedFilmsSection({super.key});
+  final bool isSelected;
+  final int selectedIndex;
+  
+  const RecommendedFilmsSection({
+    super.key,
+    this.isSelected = false,
+    this.selectedIndex = 0,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1091,7 +1370,8 @@ class RecommendedFilmsSection extends StatelessWidget {
     return RecommendedFilmsWidget(
       films: films,
       isLoading: provider.isLoadingRecommended,
-
+      isSelected: isSelected,
+      selectedIndex: selectedIndex,
       onTap: (film) {
         final filmId = film['id'];
         Navigator.push(context, createSlideRoute(FilmScreen(filmId: filmId)));
@@ -1110,8 +1390,15 @@ class RecommendedFilmsSection extends StatelessWidget {
 // Genres Section
 class GenresSection extends StatelessWidget {
   final VoidCallback onRetry;
+  final bool isSelected;
+  final int selectedIndex;
 
-  const GenresSection({super.key, required this.onRetry});
+  const GenresSection({
+    super.key,
+    required this.onRetry,
+    this.isSelected = false,
+    this.selectedIndex = 0,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1196,10 +1483,12 @@ class GenresSection extends StatelessWidget {
             cacheExtent: 500,
             itemBuilder: (context, index) {
               final genre = genres[index];
+              final itemSelected = isSelected && selectedIndex == index;
               return Padding(
                 padding: const EdgeInsets.only(right: 16),
                 child: GenreCard(
                   genre: genre,
+                  isSelected: itemSelected,
                   onTap: () async {
                     final connectivityResult =
                         await Connectivity().checkConnectivity();
@@ -1246,7 +1535,16 @@ class GenresSection extends StatelessWidget {
 
 // Categories Section
 class CategoriesSection extends StatelessWidget {
-  const CategoriesSection({super.key});
+  final int baseSectionIndex;
+  final int selectedSectionIndex;
+  final int selectedItemIndex;
+  
+  const CategoriesSection({
+    super.key,
+    required this.baseSectionIndex,
+    required this.selectedSectionIndex,
+    required this.selectedItemIndex,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1260,16 +1558,22 @@ class CategoriesSection extends StatelessWidget {
     }
     return Column(
       children:
-          categories.map((category) {
+          categories.asMap().entries.map((entry) {
+            final index = entry.key;
+            final category = entry.value;
             final categoryId = category['id'];
             final films = categoryFilms[categoryId] ?? [];
             final isLoading = isLoadingCategoryFilms[categoryId] ?? true;
+            final sectionIndex = baseSectionIndex + index;
+            final isSectionSelected = selectedSectionIndex == sectionIndex;
 
             return CategorySection(
               category: category,
               films: films,
               isLoading: isLoading,
               isDarkMode: true,
+              isSelected: isSectionSelected,
+              selectedItemIndex: selectedItemIndex,
             );
           }).toList(),
     );
@@ -1282,6 +1586,8 @@ class CategorySection extends StatelessWidget {
   final List<dynamic> films;
   final bool isLoading;
   final bool isDarkMode;
+  final bool isSelected;
+  final int selectedItemIndex;
 
   const CategorySection({
     super.key,
@@ -1289,6 +1595,8 @@ class CategorySection extends StatelessWidget {
     required this.films,
     required this.isLoading,
     required this.isDarkMode,
+    this.isSelected = false,
+    this.selectedItemIndex = 0,
   });
 
   @override
@@ -1363,10 +1671,12 @@ class CategorySection extends StatelessWidget {
                       itemExtent: itemWidth + itemMargin,
                       cacheExtent: 500,
                       itemBuilder: (context, index) {
+                        final itemSelected = isSelected && selectedItemIndex == index;
                         return FilmItem(
                           film: films[index],
                           itemWidth: itemWidth,
                           itemHeight: itemHeight,
+                          isSelected: itemSelected,
                         );
                       },
                     ),
@@ -1382,12 +1692,14 @@ class FilmItem extends StatelessWidget {
   final dynamic film;
   final double itemWidth;
   final double itemHeight;
+  final bool isSelected;
 
   const FilmItem({
     super.key,
     required this.film,
     required this.itemWidth,
     required this.itemHeight,
+    this.isSelected = false,
   });
 
   @override
@@ -1407,41 +1719,38 @@ class FilmItem extends StatelessWidget {
     final genreName = genres.isNotEmpty ? genres[0]['name_uz'] ?? '' : '';
     final filmId = film['id'];
 
-    return FocusScope(
-      child: Builder(
-        builder: (context) {
-          final focusNode = FocusNode();
-          return GestureDetector(
-            onTap: () {
-              Navigator.push(
-                context,
-                createSlideRoute(FilmScreen(filmId: filmId)),
-              );
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              transform:
-                  FocusScope.of(context).hasFocus
-                      ? (Matrix4.identity()..scale(1.05))
-                      : Matrix4.identity(),
-              margin: const EdgeInsets.only(right: 16),
-              width: itemWidth,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                boxShadow:
-                    FocusScope.of(context).hasFocus
-                        ? [
-                          BoxShadow(
-                            color: Colors.yellow.withOpacity(0.3),
-                            blurRadius: 8,
-                          ),
-                        ]
-                        : null,
-                border:
-                    FocusScope.of(context).hasFocus
-                        ? Border.all(color: Colors.yellow, width: 2)
-                        : null,
-              ),
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          createSlideRoute(FilmScreen(filmId: filmId)),
+        );
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        transform:
+            isSelected
+                ? (Matrix4.identity()..scale(1.05))
+                : Matrix4.identity(),
+        margin: const EdgeInsets.only(right: 16),
+        width: itemWidth,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          boxShadow:
+              isSelected
+                  ? [
+                    BoxShadow(
+                      color: Colors.yellow.withOpacity(0.5),
+                      blurRadius: 15,
+                      spreadRadius: 3,
+                    ),
+                  ]
+                  : null,
+          border:
+              isSelected
+                  ? Border.all(color: Colors.yellow, width: 3)
+                  : null,
+        ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1488,8 +1797,14 @@ class FilmItem extends StatelessWidget {
 class GenreCard extends StatelessWidget {
   final Map<String, dynamic> genre;
   final VoidCallback onTap;
+  final bool isSelected;
 
-  const GenreCard({super.key, required this.genre, required this.onTap});
+  const GenreCard({
+    super.key,
+    required this.genre,
+    required this.onTap,
+    this.isSelected = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1503,34 +1818,31 @@ class GenreCard extends StatelessWidget {
             : 'https://placehold.co/350x250';
     final name = genre['name_uz'] ?? 'Noma’lum';
 
-    return FocusScope(
-      child: Builder(
-        builder: (context) {
-          final focusNode = FocusNode();
-          return GestureDetector(
-            onTap: onTap,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              transform:
-                  FocusScope.of(context).hasFocus
-                      ? (Matrix4.identity()..scale(1.05))
-                      : Matrix4.identity(),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                boxShadow:
-                    FocusScope.of(context).hasFocus
-                        ? [
-                          BoxShadow(
-                            color: Colors.yellow.withOpacity(0.3),
-                            blurRadius: 8,
-                          ),
-                        ]
-                        : null,
-                border:
-                    FocusScope.of(context).hasFocus
-                        ? Border.all(color: Colors.yellow, width: 2)
-                        : null,
-              ),
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        transform:
+            isSelected
+                ? (Matrix4.identity()..scale(1.05))
+                : Matrix4.identity(),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          boxShadow:
+              isSelected
+                  ? [
+                    BoxShadow(
+                      color: Colors.yellow.withOpacity(0.5),
+                      blurRadius: 15,
+                      spreadRadius: 3,
+                    ),
+                  ]
+                  : null,
+          border:
+              isSelected
+                  ? Border.all(color: Colors.yellow, width: 3)
+                  : null,
+        ),
               child: Stack(
                 children: [
                   ClipRRect(

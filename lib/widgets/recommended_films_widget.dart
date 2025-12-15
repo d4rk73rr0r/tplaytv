@@ -17,6 +17,8 @@ class RecommendedFilmsWidget extends StatelessWidget {
   final String? error;
   final Function(dynamic) onTap;
   final VoidCallback onMoreTap;
+  final bool isSelected;
+  final int selectedIndex;
 
   const RecommendedFilmsWidget({
     super.key,
@@ -26,6 +28,8 @@ class RecommendedFilmsWidget extends StatelessWidget {
     required this.onTap,
     required this.onMoreTap,
     required bool isDark,
+    this.isSelected = false,
+    this.selectedIndex = 0,
   });
 
   void _showErrorDialog(BuildContext context, String message) {
@@ -163,6 +167,7 @@ class RecommendedFilmsWidget extends StatelessWidget {
                       itemExtent: itemWidth + itemMargin,
                       itemBuilder: (context, index) {
                         final film = films[index];
+                        final itemSelected = isSelected && selectedIndex == index;
                         final files = film['files'] as List<dynamic>? ?? [];
                         final imageUrl =
                             files.isNotEmpty
@@ -176,74 +181,50 @@ class RecommendedFilmsWidget extends StatelessWidget {
                                         'https://placehold.co/320x180')
                                 : 'https://placehold.co/320x180';
 
-                        // Use FocusableActionDetector so item can receive focus and ActivateIntent
                         return Padding(
                           padding: const EdgeInsets.only(right: 16),
-                          child: FocusableActionDetector(
-                            shortcuts: <LogicalKeySet, Intent>{
-                              // Space / Enter will map to ActivateIntent by default, but we include for clarity
-                              LogicalKeySet(LogicalKeyboardKey.select):
-                                  const ActivateIntent(),
-                              LogicalKeySet(LogicalKeyboardKey.enter):
-                                  const ActivateIntent(),
-                              LogicalKeySet(LogicalKeyboardKey.numpadEnter):
-                                  const ActivateIntent(),
-                            },
-                            actions: <Type, Action<Intent>>{
-                              ActivateIntent: CallbackAction<Intent>(
-                                onInvoke: (Intent intent) {
-                                  onTap(film);
-                                  return null;
-                                },
-                              ),
-                            },
-                            child: Builder(
-                              builder: (context) {
-                                final hasFocus = Focus.of(context).hasFocus;
-                                return GestureDetector(
-                                  onTap: () => onTap(film),
-                                  child: AnimatedContainer(
-                                    duration: const Duration(milliseconds: 200),
-                                    transform:
-                                        hasFocus
-                                            ? (Matrix4.identity()..scale(1.1))
-                                            : Matrix4.identity(),
-                                    margin: const EdgeInsets.only(right: 16),
-                                    width: itemWidth,
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(12),
-                                      border:
-                                          hasFocus
-                                              ? Border.all(
-                                                color: Colors.yellow,
-                                                width: 2,
-                                              )
-                                              : null,
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withOpacity(0.2),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 4),
-                                        ),
-                                        if (hasFocus)
-                                          BoxShadow(
-                                            color: Colors.yellow.withOpacity(
-                                              0.3,
-                                            ),
-                                            blurRadius: 8,
-                                          ),
-                                      ],
+                          child: GestureDetector(
+                            onTap: () => onTap(film),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              transform:
+                                  itemSelected
+                                      ? (Matrix4.identity()..scale(1.1))
+                                      : Matrix4.identity(),
+                              margin: const EdgeInsets.only(right: 16),
+                              width: itemWidth,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                border:
+                                    itemSelected
+                                        ? Border.all(
+                                          color: Colors.yellow,
+                                          width: 3,
+                                        )
+                                        : null,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.2),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                  if (itemSelected)
+                                    BoxShadow(
+                                      color: Colors.yellow.withOpacity(0.5),
+                                      blurRadius: 15,
+                                      spreadRadius: 3,
                                     ),
-                                    child: Material(
-                                      color: Colors.black.withOpacity(0.8),
-                                      borderRadius: BorderRadius.circular(12),
-                                      child: InkWell(
-                                        borderRadius: BorderRadius.circular(12),
-                                        // Note: onTap also here so touch works
-                                        onTap: () => onTap(film),
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
+                                ],
+                              ),
+                              child: Material(
+                                color: Colors.black.withOpacity(0.8),
+                                borderRadius: BorderRadius.circular(12),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(12),
+                                  onTap: () => onTap(film),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                           children: [
                                             ClipRRect(
                                               borderRadius:
@@ -317,10 +298,10 @@ class RecommendedFilmsWidget extends StatelessWidget {
                                       ),
                                     ),
                                   ),
-                                );
-                              },
-                            ),
-                          ),
+                                ),
+                              ),
+                            );
+                          },
                         );
                       },
                     ),
