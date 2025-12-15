@@ -225,86 +225,82 @@ class RecommendedFilmsWidget extends StatelessWidget {
                                   child: Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
-                                          children: [
-                                            ClipRRect(
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                              child: CachedNetworkImage(
-                                                imageUrl: imageUrl,
-                                                cacheManager:
-                                                    customCacheManager,
-                                                fit: BoxFit.cover,
+                                    children: [
+                                      ClipRRect(
+                                        borderRadius:
+                                            BorderRadius.circular(12),
+                                        child: CachedNetworkImage(
+                                          imageUrl: imageUrl,
+                                          cacheManager:
+                                              customCacheManager,
+                                          fit: BoxFit.cover,
+                                          width: itemWidth,
+                                          height: itemHeight,
+                                          maxHeightDiskCache: 400,
+                                          fadeInDuration: const Duration(
+                                            milliseconds: 300,
+                                          ),
+                                          placeholder:
+                                              (context, url) => Container(
                                                 width: itemWidth,
                                                 height: itemHeight,
-                                                maxHeightDiskCache: 400,
-                                                fadeInDuration: const Duration(
-                                                  milliseconds: 300,
+                                                color: Colors.black
+                                                    .withOpacity(0.8),
+                                                child: const Center(
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                        color:
+                                                            Colors.white,
+                                                      ),
                                                 ),
-                                                placeholder:
-                                                    (context, url) => Container(
-                                                      width: itemWidth,
-                                                      height: itemHeight,
-                                                      color: Colors.black
-                                                          .withOpacity(0.8),
-                                                      child: const Center(
-                                                        child:
-                                                            CircularProgressIndicator(
-                                                              color:
-                                                                  Colors.white,
-                                                            ),
-                                                      ),
-                                                    ),
-                                                errorWidget:
-                                                    (
-                                                      context,
-                                                      url,
-                                                      error,
-                                                    ) => Container(
-                                                      width: itemWidth,
-                                                      height: itemHeight,
-                                                      color: Colors.black
-                                                          .withOpacity(0.8),
-                                                      child: const Center(
-                                                        child: Icon(
-                                                          Icons.broken_image,
-                                                          size: 48,
-                                                          color: Colors.white,
-                                                        ),
-                                                      ),
-                                                    ),
                                               ),
-                                            ),
-                                            const SizedBox(height: 8),
-                                            Text(
-                                              film['name_uz'] ?? 'Noma’lum',
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
-                                                fontSize: 20,
-                                                fontWeight: FontWeight.w600,
-                                                color: Colors.white,
+                                          errorWidget:
+                                              (
+                                                context,
+                                                url,
+                                                error,
+                                              ) => Container(
+                                                width: itemWidth,
+                                                height: itemHeight,
+                                                color: Colors.black
+                                                    .withOpacity(0.8),
+                                                child: const Center(
+                                                  child: Icon(
+                                                    Icons.broken_image,
+                                                    size: 48,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
                                               ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              "${film['year']?.toString() ?? ''} · ${film['genres']?.isNotEmpty ?? false ? film['genres'][0]['name_uz'] ?? '' : ''}",
-                                              style: const TextStyle(
-                                                fontSize: 18,
-                                                color: Colors.white70,
-                                              ),
-                                            ),
-                                          ],
                                         ),
                                       ),
-                                    ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        film['name_uz'] ?? 'Noma’lum',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        "${film['year']?.toString() ?? ''} · ${film['genres']?.isNotEmpty ?? false ? film['genres'][0]['name_uz'] ?? '' : ''}",
+                                        style: const TextStyle(
+                                          fontSize: 18,
+                                          color: Colors.white70,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
-                            );
-                          },
-                        );
-                      },
-                    ),
+                            ),
+                          );
+                        },
+                      ),
           ),
         ],
       ),

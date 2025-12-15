@@ -1019,128 +1019,125 @@ class BannerItem extends StatelessWidget {
                   ? Border.all(color: Colors.yellow, width: 3)
                   : null,
         ),
-              child: Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: CachedNetworkImage(
-                      imageUrl: imageUrl,
+        child: Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: CachedNetworkImage(
+                imageUrl: imageUrl,
+                width: double.infinity,
+                height: 300,
+                fit: BoxFit.cover,
+                cacheManager: customCacheManager,
+                placeholder:
+                    (context, url) =>
+                        const Center(child: CircularProgressIndicator()),
+                errorWidget:
+                    (context, url, error) => Container(
                       width: double.infinity,
                       height: 300,
-                      fit: BoxFit.cover,
-                      cacheManager: customCacheManager,
-                      placeholder:
-                          (context, url) =>
-                              const Center(child: CircularProgressIndicator()),
-                      errorWidget:
-                          (context, url, error) => Container(
-                            width: double.infinity,
-                            height: 300,
-                            color: Colors.grey[300],
-                            child: const Center(
-                              child: Text(
-                                'Rasmni yuklashda xato',
-                                style: TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 18,
-                                ),
-                              ),
-                            ),
+                      color: Colors.grey[300],
+                      child: const Center(
+                        child: Text(
+                          'Rasmni yuklashda xato',
+                          style: TextStyle(
+                            color: Colors.grey,
+                            fontSize: 18,
                           ),
-                    ),
-                  ),
-                  Container(
-                    width: double.infinity,
-                    height: 300,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black.withValues(alpha: 0.6),
-                        ],
+                        ),
                       ),
                     ),
-                  ),
-                  Positioned(
-                    bottom: 12,
-                    left: 24,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title.length > 20
-                              ? '${title.substring(0, 20)}...'
-                              : title,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          year,
-                          style: const TextStyle(
-                            color: Colors.grey,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ],
+              ),
+            ),
+            Container(
+              width: double.infinity,
+              height: 300,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.6),
+                  ],
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 12,
+              left: 24,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title.length > 20
+                        ? '${title.substring(0, 20)}...'
+                        : title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  Positioned(
-                    bottom: 12,
-                    right: 24,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Row(
-                          children: [
-                            const Text(
-                              'Kinopoisk: ',
-                              style: TextStyle(
-                                color: Colors.grey,
-                                fontSize: 16,
-                              ),
-                            ),
-                            Text(
-                              kinopoiskRating,
-                              style: const TextStyle(
-                                color: Colors.yellow,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            const Text(
-                              'IMDb: ',
-                              style: TextStyle(
-                                color: Colors.grey,
-                                fontSize: 16,
-                              ),
-                            ),
-                            Text(
-                              imdbRating,
-                              style: const TextStyle(
-                                color: Colors.yellow,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                  Text(
+                    year,
+                    style: const TextStyle(
+                      color: Colors.grey,
+                      fontSize: 16,
                     ),
                   ),
                 ],
               ),
             ),
-          );
-        },
+            Positioned(
+              bottom: 12,
+              right: 24,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Row(
+                    children: [
+                      const Text(
+                        'Kinopoisk: ',
+                        style: TextStyle(
+                          color: Colors.grey,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(
+                        kinopoiskRating,
+                        style: const TextStyle(
+                          color: Colors.yellow,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Text(
+                        'IMDb: ',
+                        style: TextStyle(
+                          color: Colors.grey,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(
+                        imdbRating,
+                        style: const TextStyle(
+                          color: Colors.yellow,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1301,51 +1298,48 @@ class LatestViewedItem extends StatelessWidget {
                   ? Border.all(color: Colors.yellow, width: 3)
                   : null,
         ),
-              child: Stack(
+        child: Stack(
+          children: [
+            Positioned(
+              bottom: 12,
+              right: 12,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Positioned(
-                    bottom: 12,
-                    right: 12,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.withOpacity(0.7),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            viewedTimeString,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          width: 180,
-                          child: LinearProgressIndicator(
-                            value: progress.clamp(0.0, 1.0),
-                            backgroundColor: Colors.grey[400],
-                            valueColor: const AlwaysStoppedAnimation<Color>(
-                              Colors.yellow,
-                            ),
-                          ),
-                        ),
-                      ],
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.withOpacity(0.7),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      viewedTimeString,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: 180,
+                    child: LinearProgressIndicator(
+                      value: progress.clamp(0.0, 1.0),
+                      backgroundColor: Colors.grey[400],
+                      valueColor: const AlwaysStoppedAnimation<Color>(
+                        Colors.yellow,
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-          );
-        },
+          ],
+        ),
       ),
     );
   }
@@ -1751,43 +1745,40 @@ class FilmItem extends StatelessWidget {
                   ? Border.all(color: Colors.yellow, width: 3)
                   : null,
         ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    height: itemHeight,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      image: DecorationImage(
-                        image: CachedNetworkImageProvider(
-                          imageUrl,
-                          cacheManager: customCacheManager,
-                        ),
-                        fit: BoxFit.cover,
-                      ),
-                    ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              height: itemHeight,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                image: DecorationImage(
+                  image: CachedNetworkImageProvider(
+                    imageUrl,
+                    cacheManager: customCacheManager,
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    "$year · $genreName",
-                    style: const TextStyle(fontSize: 14, color: Colors.grey),
-                  ),
-                ],
+                  fit: BoxFit.cover,
+                ),
               ),
             ),
-          );
-        },
+            const SizedBox(height: 8),
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              "$year · $genreName",
+              style: const TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1843,69 +1834,66 @@ class GenreCard extends StatelessWidget {
                   ? Border.all(color: Colors.yellow, width: 3)
                   : null,
         ),
-              child: Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: CachedNetworkImage(
-                      imageUrl: imageUrl,
+        child: Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: CachedNetworkImage(
+                imageUrl: imageUrl,
+                width: 350,
+                height: 250,
+                fit: BoxFit.cover,
+                cacheManager: customCacheManager,
+                placeholder:
+                    (context, url) =>
+                        const Center(child: CircularProgressIndicator()),
+                errorWidget:
+                    (context, url, error) => Container(
                       width: 350,
                       height: 250,
-                      fit: BoxFit.cover,
-                      cacheManager: customCacheManager,
-                      placeholder:
-                          (context, url) =>
-                              const Center(child: CircularProgressIndicator()),
-                      errorWidget:
-                          (context, url, error) => Container(
-                            width: 350,
-                            height: 250,
-                            color: Colors.grey[300],
-                            child: const Center(
-                              child: Text(
-                                'Rasmni yuklashda xato',
-                                style: TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 18,
-                                ),
-                              ),
-                            ),
+                      color: Colors.grey[300],
+                      child: const Center(
+                        child: Text(
+                          'Rasmni yuklashda xato',
+                          style: TextStyle(
+                            color: Colors.grey,
+                            fontSize: 18,
                           ),
-                    ),
-                  ),
-                  Container(
-                    width: 350,
-                    height: 250,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black.withValues(alpha: 0.6),
-                        ],
+                        ),
                       ),
                     ),
-                  ),
-                  Positioned(
-                    bottom: 16,
-                    left: 24,
-                    child: Text(
-                      name,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
               ),
             ),
-          );
-        },
+            Container(
+              width: 350,
+              height: 250,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.6),
+                  ],
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 16,
+              left: 24,
+              child: Text(
+                name,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
