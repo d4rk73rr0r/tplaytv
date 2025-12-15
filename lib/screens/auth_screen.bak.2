@@ -1,0 +1,1173 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
+import 'package:tplaytv/services/api_service.dart';
+import 'package:tplaytv/main.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'phone_number_formatter.dart';
+import 'package:tplaytv/utils/navigation.dart';
+
+// Constants
+class AuthConstants {
+  static const int codeLength = 4;
+  static const int phoneLength = 9;
+  static const int timerDuration = 60;
+  static const String phonePrefix = '+998';
+  static const List<String> validOperatorCodes = [
+    '90', '91', '93', '94', '95', '97', '98', '99', '33', '88', '50'
+  ];
+}
+
+// Localization strings (keyinchalik alohida faylga chiqarish mumkin)
+class AuthStrings {
+  static const String enterCode = "Kodni kiriting";
+  static const String enterPhone = "Raqamingizni kiriting";
+  static const String submit = "Yuborish";
+  static const String confirm = "Tasdiqlash";
+  static const String resend = "Qayta yuborish";
+  static const String switchToRegister = "Ro'yxatdan o'tishni xohlaysizmi?";
+  static const String switchToLogin = "Kirishni xohlaysizmi?";
+  static const String fullName = "To'liq ism";
+  static const String username = "Foydalanuvchi nomi";
+  static const String selectBirthDate = "Tug'ilgan sanani tanlang";
+  static const String gender = "Jins";
+  static const String male = "Erkak";
+  static const String female = "Ayol";
+  static const String keyboardHint = 
+      "Agar raqamli klaviatura ko'rinmasa, qurilma sozlamalarida virtual klaviaturani faollashtiring.";
+  static const String errorInvalidPhone = "Noto'g'ri telefon raqami";
+  static const String errorCompletePhone = "To'liq raqam kiriting";
+  static const String errorCompleteCode = "To'liq kod kiriting";
+  static const String errorSendingSms = "SMS yuborishda xatolik yuz berdi";
+  static const String errorConfirmingCode = "Kod tasdiqlashda xatolik";
+  static const String errorRegistration = "Ro'yxatdan o'tishda xatolik yuz berdi";
+  static const String errorFillAllFields = "Barcha maydonlarni to'ldiring";
+  static const String errorKickDevice = "Qurilma o'chirishda xatolik";
+  static const String multipleDevicesTitle = "Bir nechta qurilma topildi";
+  static const String multipleDevicesMessage = "Bitta qurilmani o'chirib, davom eting:";
+}
+
+class AuthScreen extends StatefulWidget {
+  const AuthScreen({super.key});
+
+  @override
+  State<AuthScreen> createState() => _AuthScreenState();
+}
+
+class _AuthScreenState extends State<AuthScreen> {
+  // Controllers
+  final _phoneController = TextEditingController();
+  final List<TextEditingController> _codeControllers = 
+      List.generate(AuthConstants.codeLength, (_) => TextEditingController());
+  final _fullNameController = TextEditingController();
+  final _usernameController = TextEditingController();
+
+  // Focus nodes
+  final _phoneFocusNode = FocusNode();
+  final _submitFocusNode = FocusNode();
+  final _switchAuthModeFocusNode = FocusNode();
+  final _codeKeyboardFocusNode = FocusNode();
+  final List<FocusNode> _codeFocusNodes = 
+      List.generate(AuthConstants.codeLength, (_) => FocusNode());
+
+  // State variables
+  SharedPreferences? _prefs;
+  DateTime? _selectedBirthDate;
+  bool _isLoginMode = true;
+  bool _isCodeSent = false;
+  bool _isLoading = false;
+  String? _errorMessage;
+  int? _selectedGender;
+  int _remainingSeconds = AuthConstants.timerDuration;
+  Timer? _timer;
+  bool _canResend = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializePreferences();
+    _setupInitialFocus();
+    _setupFocusListeners();
+  }
+
+  Future<void> _initializePreferences() async {
+    _prefs = await SharedPreferences.getInstance();
+  }
+
+  void _setupInitialFocus() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _requestFocus(_submitFocusNode);
+      }
+    });
+  }
+
+  void _setupFocusListeners() {
+    // Phone focus listener
+    _phoneFocusNode.addListener(_handlePhoneFocusChange);
+    
+    // Submit button focus listener
+    _submitFocusNode.addListener(_handleSubmitFocusChange);
+    
+    // Switch auth mode focus listener
+    _switchAuthModeFocusNode.addListener(_handleSwitchAuthFocusChange);
+    
+    // Code fields focus listeners
+    for (int i = 0; i < _codeFocusNodes.length; i++) {
+      _codeFocusNodes[i].addListener(() => _handleCodeFocusChange(i));
+    }
+  }
+
+  void _handlePhoneFocusChange() {
+    if (_phoneFocusNode.hasFocus) {
+      _logDebug("Phone field focused");
+      setState(() {});
+    }
+  }
+
+  void _handleSubmitFocusChange() {
+    if (_submitFocusNode.hasFocus) {
+      _logDebug("Submit button focused");
+      setState(() {});
+    }
+  }
+
+  void _handleSwitchAuthFocusChange() {
+    if (_switchAuthModeFocusNode.hasFocus) {
+      _logDebug("Switch auth mode focused");
+      setState(() {});
+    }
+  }
+
+  void _handleCodeFocusChange(int index) {
+    if (_codeFocusNodes[index].hasFocus) {
+      _logDebug("Code field $index focused");
+      SystemChannels.textInput.invokeMethod('TextInput.show');
+      setState(() {});
+    }
+  }
+
+  void _startTimer() {
+    _remainingSeconds = AuthConstants.timerDuration;
+    _canResend = false;
+    _timer?.cancel();
+    
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      
+      if (_remainingSeconds > 0) {
+        setState(() => _remainingSeconds--);
+      } else {
+        setState(() {
+          _canResend = true;
+          timer.cancel();
+        });
+      }
+    });
+  }
+
+  bool _isPhoneValid() {
+    final rawPhone = _phoneController.text.replaceAll(RegExp(r'[^0-9]'), '');
+    
+    if (rawPhone.length != AuthConstants.phoneLength) {
+      return false;
+    }
+    
+    // Operator kodni tekshirish
+    final operatorCode = rawPhone.substring(0, 2);
+    return AuthConstants.validOperatorCodes.contains(operatorCode);
+  }
+
+  bool _isFormValid() {
+    if (_isCodeSent) {
+      return _codeControllers.every((c) => c.text.isNotEmpty);
+    } else if (_isLoginMode) {
+      return _isPhoneValid();
+    } else {
+      return _isPhoneValid() &&
+          _fullNameController.text.trim().isNotEmpty &&
+          _usernameController.text.trim().isNotEmpty &&
+          _selectedBirthDate != null &&
+          _selectedGender != null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(
+        children: [
+          _buildBackground(),
+          _buildGradientOverlay(),
+          _buildContent(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBackground() {
+    return Container(
+      decoration: BoxDecoration(
+        image: _tryLoadAssetImage('assets/images/background.png'),
+      ),
+    );
+  }
+
+  Widget _buildGradientOverlay() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.black.withOpacity(0.3),
+            Colors.black.withOpacity(1.0),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContent() {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.only(top: 5, left: 40, right: 40),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: [
+            _buildLogo(),
+            _buildTitle(),
+            const SizedBox(height: 12),
+            _buildFormFields(),
+            if (_errorMessage != null) _buildErrorMessage(),
+            const SizedBox(height: 10),
+            _buildSubmitButton(),
+            const SizedBox(height: 10),
+            if (!_isCodeSent) _buildSwitchAuthModeButton(),
+            if (!_isCodeSent) _buildKeyboardHint(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLogo() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: _tryLoadAssetImageWidget(
+        'assets/images/logo.png',
+        height: 45,
+      ),
+    );
+  }
+
+  Widget _buildTitle() {
+    return Text(
+      _isCodeSent ? AuthStrings.enterCode : AuthStrings.enterPhone,
+      style: const TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.bold,
+        color: Colors.white,
+      ),
+    );
+  }
+
+  Widget _buildFormFields() {
+    if (_isCodeSent) {
+      return _buildCodeInputFields();
+    } else if (_isLoginMode) {
+      return _buildPhoneField();
+    } else {
+      return _buildRegistrationFields();
+    }
+  }
+
+  Widget _buildRegistrationFields() {
+    return Column(
+      children: [
+        _buildPhoneField(),
+        const SizedBox(height: 10),
+        _buildTextField(
+          controller: _fullNameController,
+          label: AuthStrings.fullName,
+        ),
+        const SizedBox(height: 10),
+        _buildTextField(
+          controller: _usernameController,
+          label: AuthStrings.username,
+        ),
+        const SizedBox(height: 10),
+        _buildDatePicker(),
+        const SizedBox(height: 10),
+        _buildGenderDropdown(),
+      ],
+    );
+  }
+
+  Widget _buildErrorMessage() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Text(
+        _errorMessage!,
+        style: const TextStyle(
+          color: Colors.redAccent,
+          fontSize: 10,
+        ),
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
+
+  Widget _buildKeyboardHint() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Text(
+        AuthStrings.keyboardHint,
+        style: TextStyle(
+          color: Colors.white.withOpacity(0.7),
+          fontSize: 9,
+        ),
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
+
+  Widget _buildPhoneField() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 32),
+      child: TextField(
+        focusNode: _phoneFocusNode,
+        controller: _phoneController,
+        decoration: InputDecoration(
+          prefixIcon: const Icon(Icons.phone, color: Colors.white),
+          prefixText: "${AuthConstants.phonePrefix} ",
+          prefixStyle: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+          hintText: "XX XXX XX XX",
+          hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide.none,
+          ),
+          filled: true,
+          fillColor: Colors.black.withOpacity(0.5),
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 12,
+            horizontal: 16,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(
+              color: _phoneFocusNode.hasFocus
+                  ? Colors.yellow
+                  : Colors.white.withOpacity(0.3),
+              width: _phoneFocusNode.hasFocus ? 2 : 1,
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Colors.yellow, width: 2),
+          ),
+        ),
+        style: const TextStyle(color: Colors.white, fontSize: 12),
+        keyboardType: TextInputType.number,
+        inputFormatters: [PhoneNumberFormatter()],
+        enabled: !_isLoading,
+        onChanged: (value) => setState(() {}),
+        onEditingComplete: () {
+          if (_isPhoneValid()) {
+            _requestFocus(_submitFocusNode);
+          } else {
+            _requestFocus(_phoneFocusNode);
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildCodeInputFields() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: RawKeyboardListener(
+        focusNode: _codeKeyboardFocusNode,
+        onKey: _handleCodeKeyboardEvent,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(
+            AuthConstants.codeLength,
+            (index) => _buildCodeField(index),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _handleCodeKeyboardEvent(RawKeyEvent event) {
+    if (event is! RawKeyDownEvent) return;
+
+    final currentFocusIndex = _codeFocusNodes.indexWhere((node) => node.hasFocus);
+    if (currentFocusIndex == -1) return;
+
+    if (event.logicalKey == LogicalKeyboardKey.backspace) {
+      _handleBackspaceInCode(currentFocusIndex);
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      _handleArrowLeftInCode(currentFocusIndex);
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      _handleArrowRightInCode(currentFocusIndex);
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      _requestFocus(_submitFocusNode);
+    } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      _requestFocus(_codeFocusNodes[0]);
+    }
+  }
+
+  void _handleBackspaceInCode(int currentIndex) {
+    if (_codeControllers[currentIndex].text.isEmpty && currentIndex > 0) {
+      _requestFocus(_codeFocusNodes[currentIndex - 1]);
+      _logDebug("Backspace: moved to field ${currentIndex - 1}");
+    }
+  }
+
+  void _handleArrowLeftInCode(int currentIndex) {
+    if (currentIndex > 0) {
+      _requestFocus(_codeFocusNodes[currentIndex - 1]);
+      _logDebug("Arrow left: moved to field ${currentIndex - 1}");
+    }
+  }
+
+  void _handleArrowRightInCode(int currentIndex) {
+    if (currentIndex < AuthConstants.codeLength - 1) {
+      _requestFocus(_codeFocusNodes[currentIndex + 1]);
+      _logDebug("Arrow right: moved to field ${currentIndex + 1}");
+    }
+  }
+
+  Widget _buildCodeField(int index) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: SizedBox(
+        width: 50,
+        child: TextField(
+          focusNode: _codeFocusNodes[index],
+          controller: _codeControllers[index],
+          decoration: InputDecoration(
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide.none,
+            ),
+            filled: true,
+            fillColor: Colors.black.withOpacity(0.5),
+            counterText: "",
+            contentPadding: const EdgeInsets.symmetric(vertical: 10),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: BorderSide(
+                color: _codeFocusNodes[index].hasFocus
+                    ? Colors.yellow
+                    : Colors.white.withOpacity(0.3),
+                width: _codeFocusNodes[index].hasFocus ? 2 : 1,
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: Colors.yellow, width: 2),
+            ),
+          ),
+          style: const TextStyle(color: Colors.white, fontSize: 12),
+          keyboardType: TextInputType.number,
+          textAlign: TextAlign.center,
+          maxLength: 1,
+          obscureText: true,
+          obscuringCharacter: '*',
+          enabled: !_isLoading,
+          onChanged: (value) => _handleCodeFieldChange(index, value),
+          onEditingComplete: () => _handleCodeFieldEditingComplete(index),
+        ),
+      ),
+    );
+  }
+
+  void _handleCodeFieldChange(int index, String value) {
+    _logDebug("Code field $index changed: ${value.isNotEmpty ? '*' : 'empty'}");
+    
+    if (value.isNotEmpty && index < AuthConstants.codeLength - 1) {
+      _requestFocus(_codeFocusNodes[index + 1]);
+      _logDebug("Moved to field ${index + 1}");
+    } else if (value.isEmpty && index > 0) {
+      _codeControllers[index].clear();
+      _requestFocus(_codeFocusNodes[index - 1]);
+      _logDebug("Cleared and moved to field ${index - 1}");
+    }
+    
+    if (index == AuthConstants.codeLength - 1 && value.isNotEmpty) {
+      _requestFocus(_submitFocusNode);
+      _logDebug("Last field filled, focusing submit button");
+    }
+    
+    setState(() {});
+  }
+
+  void _handleCodeFieldEditingComplete(int index) {
+    _logDebug("Code field $index editing complete");
+    
+    if (index < AuthConstants.codeLength - 1 && 
+        _codeControllers[index].text.isNotEmpty) {
+      _requestFocus(_codeFocusNodes[index + 1]);
+    } else if (index == AuthConstants.codeLength - 1 && 
+               _codeControllers[index].text.isNotEmpty) {
+      _confirmCode();
+    }
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 32),
+      child: TextField(
+        controller: controller,
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(color: Colors.white70, fontSize: 10),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide.none,
+          ),
+          filled: true,
+          fillColor: Colors.black.withOpacity(0.5),
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 12,
+            horizontal: 16,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(
+              color: controller.text.isNotEmpty
+                  ? Colors.yellow
+                  : Colors.white.withOpacity(0.3),
+              width: controller.text.isNotEmpty ? 2 : 1,
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Colors.yellow, width: 2),
+          ),
+        ),
+        style: const TextStyle(color: Colors.white, fontSize: 12),
+        enabled: !_isLoading,
+        onChanged: (value) => setState(() {}),
+      ),
+    );
+  }
+
+  Widget _buildDatePicker() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 32),
+      child: InkWell(
+        onTap: _isLoading ? null : _selectDate,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: _selectedBirthDate != null
+                  ? Colors.yellow
+                  : Colors.white.withOpacity(0.3),
+              width: _selectedBirthDate != null ? 2 : 1,
+            ),
+            borderRadius: BorderRadius.circular(10),
+            color: Colors.black.withOpacity(0.5),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                _selectedBirthDate == null
+                    ? AuthStrings.selectBirthDate
+                    : DateFormat('dd MMMM yyyy').format(_selectedBirthDate!),
+                style: TextStyle(
+                  color: _selectedBirthDate == null
+                      ? Colors.white70
+                      : Colors.white,
+                  fontSize: 12,
+                ),
+              ),
+              const Icon(Icons.calendar_today, color: Colors.white, size: 18),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _selectDate() async {
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: _selectedBirthDate ?? DateTime(2000),
+      firstDate: DateTime(1900),
+      lastDate: DateTime.now(),
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.dark().copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: Color(0xFFE91E63),
+              onPrimary: Colors.white,
+              surface: Colors.black,
+              onSurface: Colors.white,
+            ),
+            dialogTheme: const DialogTheme(backgroundColor: Colors.black),
+          ),
+          child: child!,
+        );
+      },
+    );
+    
+    if (pickedDate != null && mounted) {
+      setState(() => _selectedBirthDate = pickedDate);
+    }
+  }
+
+  Widget _buildGenderDropdown() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 32),
+      child: DropdownButtonFormField<int>(
+        value: _selectedGender,
+        decoration: InputDecoration(
+          labelText: AuthStrings.gender,
+          labelStyle: const TextStyle(color: Colors.white70, fontSize: 10),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide.none,
+          ),
+          filled: true,
+          fillColor: Colors.black.withOpacity(0.5),
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 12,
+            horizontal: 16,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(
+              color: _selectedGender != null
+                  ? Colors.yellow
+                  : Colors.white.withOpacity(0.3),
+              width: _selectedGender != null ? 2 : 1,
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Colors.yellow, width: 2),
+          ),
+        ),
+        style: const TextStyle(color: Colors.white, fontSize: 12),
+        dropdownColor: Colors.black,
+        items: const [
+          DropdownMenuItem(value: 1, child: Text(AuthStrings.male)),
+          DropdownMenuItem(value: 0, child: Text(AuthStrings.female)),
+        ],
+        onChanged: _isLoading ? null : (value) => setState(() => _selectedGender = value),
+      ),
+    );
+  }
+
+  Widget _buildSubmitButton() {
+    return Focus(
+      focusNode: _submitFocusNode,
+      canRequestFocus: true,
+      descendantsAreFocusable: true,
+      onFocusChange: (hasFocus) {
+        if (mounted) setState(() {});
+      },
+      onKey: (node, event) {
+        if (event is RawKeyDownEvent &&
+            event.logicalKey == LogicalKeyboardKey.select &&
+            _isFormValid() &&
+            !_isLoading) {
+          _handleAction();
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          border: _submitFocusNode.hasFocus
+              ? Border.all(color: Colors.yellow, width: 2)
+              : null,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: ElevatedButton(
+          onPressed: _isFormValid() && !_isLoading ? _handleAction : null,
+          style: ElevatedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            backgroundColor: const Color(0xFFE91E63),
+            disabledBackgroundColor: Colors.grey,
+            elevation: 6,
+          ),
+          child: _isLoading
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : Text(
+                  _getSubmitButtonText(),
+                  style: const TextStyle(fontSize: 12, color: Colors.white),
+                ),
+        ),
+      ),
+    );
+  }
+
+  String _getSubmitButtonText() {
+    if (_isCodeSent) {
+      return "${AuthStrings.confirm} ($_remainingSeconds)";
+    } else if (_canResend) {
+      return AuthStrings.resend;
+    } else {
+      return AuthStrings.submit;
+    }
+  }
+
+  Widget _buildSwitchAuthModeButton() {
+    return Focus(
+      focusNode: _switchAuthModeFocusNode,
+      canRequestFocus: true,
+      descendantsAreFocusable: true,
+      onFocusChange: (hasFocus) {
+        if (mounted) setState(() {});
+      },
+      onKey: (node, event) {
+        if (event is RawKeyDownEvent &&
+            event.logicalKey == LogicalKeyboardKey.select &&
+            !_isLoading) {
+          _switchAuthMode();
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          border: _switchAuthModeFocusNode.hasFocus
+              ? Border.all(color: Colors.yellow, width: 2)
+              : null,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: TextButton(
+          onPressed: _isLoading ? null : _switchAuthMode,
+          child: Text(
+            _isLoginMode
+                ? AuthStrings.switchToRegister
+                : AuthStrings.switchToLogin,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 10,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _switchAuthMode() {
+    setState(() {
+      _isLoginMode = !_isLoginMode;
+      _resetFields();
+    });
+  }
+
+  Future<void> _handleAction() async {
+    _logDebug("Handle action called");
+    
+    if (_isCodeSent) {
+      await _confirmCode();
+    } else {
+      await _sendPhone();
+    }
+  }
+
+  Future<void> _sendPhone() async {
+    _logDebug("Send phone called");
+    
+    final rawPhone = _phoneController.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final phone = "998$rawPhone";
+    
+    if (!_isPhoneValid()) {
+      _setError(AuthStrings.errorInvalidPhone);
+      return;
+    }
+
+    _setLoading(true);
+    
+    try {
+      final result = await ApiService.sendPhone(phone);
+      
+      if (!mounted) return;
+      
+      if (result) {
+        setState(() {
+          _isCodeSent = true;
+          _errorMessage = null;
+        });
+        _startTimer();
+        _focusFirstCodeField();
+      } else {
+        _setError(AuthStrings.errorSendingSms);
+      }
+    } catch (e) {
+      _logDebug("Error sending phone: $e");
+      if (mounted) {
+        _setError("${AuthStrings.errorSendingSms}: $e");
+      }
+    } finally {
+      if (mounted) {
+        _setLoading(false);
+      }
+    }
+  }
+
+  void _focusFirstCodeField() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _requestFocus(_codeFocusNodes[0]);
+        SystemChannels.textInput.invokeMethod('TextInput.show');
+        _logDebug("SMS sent, focusing first code field");
+      }
+    });
+  }
+
+  Future<void> _confirmCode() async {
+    _logDebug("Confirm code called");
+    
+    final code = _codeControllers.map((c) => c.text).join();
+    
+    if (code.length != AuthConstants.codeLength) {
+      _setError(AuthStrings.errorCompleteCode);
+      return;
+    }
+
+    _setLoading(true);
+    
+    try {
+      final result = await ApiService.confirmSms(code);
+      
+      if (!mounted) return;
+      
+      if (result['success'] == true) {
+        if (_isLoginMode) {
+          _navigateToMainScreen();
+        } else {
+          await _registerUser();
+        }
+      } else if (result.containsKey('devices')) {
+        await _handleMultipleDevices(result['devices']);
+      } else {
+        _setError(result['message'] ?? AuthStrings.errorConfirmingCode);
+      }
+    } catch (e) {
+      _logDebug("Error confirming code: $e");
+      if (mounted) {
+        _setError("${AuthStrings.errorConfirmingCode}: $e");
+      }
+    } finally {
+      if (mounted) {
+        _setLoading(false);
+      }
+    }
+  }
+
+  Future<void> _handleMultipleDevices(List<dynamic> devices) async {
+    if (devices.isEmpty) return;
+
+    final currentTokenId = _prefs?.getString('token_id');
+
+    // Agar 3 yoki undan ko'p qurilma bo'lsa ham, dialog ko'rsatamiz
+    // Bu user experience uchun yaxshiroq
+    await _showDeviceSelectionDialog(devices, currentTokenId);
+  }
+
+  Future<void> _showDeviceSelectionDialog(
+    List<dynamic> devices,
+    String? currentTokenId,
+  ) async {
+    if (!mounted) return;
+
+    final otherDevices = devices
+        .where((device) => device['id'].toString() != currentTokenId)
+        .toList();
+
+    if (otherDevices.isEmpty) {
+      _setError("Qurilmalar ro'yxati bo'sh");
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        backgroundColor: Colors.black87,
+        title: const Text(
+          AuthStrings.multipleDevicesTitle,
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              AuthStrings.multipleDevicesMessage,
+              style: TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 16),
+            ...otherDevices.map((device) => _buildDeviceListTile(device)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDeviceListTile(dynamic device) {
+    return Card(
+      color: Colors.grey[900],
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: ListTile(
+        title: Text(
+          device['device_name'] ?? 'Unknown Device',
+          style: const TextStyle(color: Colors.white),
+        ),
+        subtitle: Text(
+          "ID: ${device['id'].toString()}",
+          style: const TextStyle(color: Colors.white60, fontSize: 10),
+        ),
+        trailing: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
+        onTap: () => _kickDeviceAndContinue(device['id'].toString()),
+      ),
+    );
+  }
+
+  Future<void> _kickDeviceAndContinue(String deviceId) async {
+    Navigator.pop(context); // Dialog ni yopish
+    
+    _setLoading(true);
+    
+    try {
+      final kickResult = await ApiService.kickDevice(deviceId);
+      
+      if (!mounted) return;
+      
+      if (kickResult) {
+        // Qurilma o'chirildi, kodni qayta tasdiqlash
+        final code = _codeControllers.map((c) => c.text).join();
+        final confirmResult = await ApiService.confirmSms(code);
+        
+        if (!mounted) return;
+        
+        if (confirmResult['success'] == true) {
+          if (_isLoginMode) {
+            _navigateToMainScreen();
+          } else {
+            await _registerUser();
+          }
+        } else {
+          _setError(AuthStrings.errorConfirmingCode);
+        }
+      } else {
+        _setError(AuthStrings.errorKickDevice);
+      }
+    } catch (e) {
+      _logDebug("Error kicking device: $e");
+      if (mounted) {
+        _setError("${AuthStrings.errorKickDevice}: $e");
+      }
+    } finally {
+      if (mounted) {
+        _setLoading(false);
+      }
+    }
+  }
+
+  Future<void> _registerUser() async {
+    _logDebug("Register user called");
+    
+    final fullName = _fullNameController.text.trim();
+    final username = _usernameController.text.trim();
+    
+    if (fullName.isEmpty ||
+        username.isEmpty ||
+        _selectedBirthDate == null ||
+        _selectedGender == null) {
+      _setError(AuthStrings.errorFillAllFields);
+      return;
+    }
+
+    _setLoading(true);
+    
+    try {
+      final token = _prefs?.getString('auth_token') ?? '';
+      final birthDateUnix = (_selectedBirthDate!.millisecondsSinceEpoch ~/ 1000);
+
+      final result = await ApiService.updateUser(
+        fullName: fullName,
+        username: username,
+        birthDate: birthDateUnix,
+        sex: _selectedGender!,
+        token: token,
+      );
+
+      if (!mounted) return;
+
+      if (result) {
+        _navigateToMainScreen();
+      } else {
+        _setError(AuthStrings.errorRegistration);
+      }
+    } catch (e) {
+      _logDebug("Error registering user: $e");
+      if (mounted) {
+        _setError("${AuthStrings.errorRegistration}: $e");
+      }
+    } finally {
+      if (mounted) {
+        _setLoading(false);
+      }
+    }
+  }
+
+  void _navigateToMainScreen() {
+    _logDebug("Navigate to main screen");
+    
+    if (!mounted) return;
+    
+    Navigator.pushReplacement(
+      context,
+      createSlideRoute(const MainScreen()),
+    );
+  }
+
+  void _resetFields() {
+    _logDebug("Reset fields called");
+    
+    _errorMessage = null;
+    _phoneController.clear();
+    for (var controller in _codeControllers) {
+      controller.clear();
+    }
+    _fullNameController.clear();
+    _usernameController.clear();
+    _selectedBirthDate = null;
+    _selectedGender = null;
+    _isCodeSent = false;
+    _remainingSeconds = AuthConstants.timerDuration;
+    _canResend = false;
+    _timer?.cancel();
+    
+    // Fokusni submit tugmasiga qaytarish
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _requestFocus(_submitFocusNode);
+      }
+    });
+  }
+
+  // Helper methods
+  void _setLoading(bool loading) {
+    if (mounted) {
+      setState(() => _isLoading = loading);
+    }
+  }
+
+  void _setError(String error) {
+    if (mounted) {
+      setState(() {
+        _errorMessage = error;
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _requestFocus(FocusNode node) {
+    if (mounted) {
+      FocusScope.of(context).requestFocus(node);
+    }
+  }
+
+  void _logDebug(String message) {
+    debugPrint("[AuthScreen] $message");
+  }
+
+  DecorationImage? _tryLoadAssetImage(String path) {
+    try {
+      return DecorationImage(
+        image: AssetImage(path),
+        fit: BoxFit.cover,
+        opacity: 0.3,
+      );
+    } catch (e) {
+      _logDebug("Failed to load image: $path - $e");
+      return null;
+    }
+  }
+
+  Widget _tryLoadAssetImageWidget(String path, {double? height}) {
+    try {
+      return Image.asset(path, height: height);
+    } catch (e) {
+      _logDebug("Failed to load image widget: $path - $e");
+      return Container(
+        height: height,
+        color: Colors.grey[800],
+        child: const Center(
+          child: Icon(Icons.image_not_supported, color: Colors.white54),
+        ),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    // Remove listeners before disposing
+    _phoneFocusNode.removeListener(_handlePhoneFocusChange);
+    _submitFocusNode.removeListener(_handleSubmitFocusChange);
+    _switchAuthModeFocusNode.removeListener(_handleSwitchAuthFocusChange);
+    
+    for (int i = 0; i < _codeFocusNodes.length; i++) {
+      _codeFocusNodes[i].removeListener(() => _handleCodeFocusChange(i));
+    }
+    
+    // Dispose focus nodes
+    _phoneFocusNode.dispose();
+    _submitFocusNode.dispose();
+    _switchAuthModeFocusNode.dispose();
+    _codeKeyboardFocusNode.dispose();
+    for (var node in _codeFocusNodes) {
+      node.dispose();
+    }
+    
+    // Dispose controllers
+    _phoneController.dispose();
+    for (var controller in _codeControllers) {
+      controller.dispose();
+    }
+    _fullNameController.dispose();
+    _usernameController.dispose();
+    
+    // Cancel timer
+    _timer?.cancel();
+    
+    super.dispose();
+  }
+}

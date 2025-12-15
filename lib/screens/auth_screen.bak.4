@@ -1,0 +1,1027 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
+import 'package:tplaytv/services/api_service.dart';
+import 'package:tplaytv/main.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'phone_number_formatter.dart';
+import 'package:tplaytv/utils/navigation.dart';
+
+class AuthScreen extends StatefulWidget {
+  const AuthScreen({super.key});
+
+  @override
+  State<AuthScreen> createState() => _AuthScreenState();
+}
+
+class _AuthScreenState extends State<AuthScreen> {
+  final _phoneController = TextEditingController();
+  final List<TextEditingController> _codeControllers = List.generate(
+    4,
+    (_) => TextEditingController(),
+  );
+  final _fullNameController = TextEditingController();
+  final _usernameController = TextEditingController();
+
+  // Fokus node lar
+  final FocusNode _phoneFocusNode = FocusNode();
+  final FocusNode _submitFocusNode = FocusNode();
+  final FocusNode _switchAuthModeFocusNode = FocusNode();
+  final List<FocusNode> _codeFocusNodes = List.generate(4, (_) => FocusNode());
+  final FocusNode _fullNameFocusNode = FocusNode();
+  final FocusNode _usernameFocusNode = FocusNode();
+  final FocusNode _datePickerFocusNode = FocusNode();
+  final FocusNode _genderFocusNode = FocusNode();
+
+  DateTime? _selectedBirthDate;
+  bool _isLoginMode = true;
+  bool _isCodeSent = false;
+  bool _isLoading = false;
+  String? _error;
+  int? _selectedGender;
+  int _remainingSeconds = 60;
+  Timer? _timer;
+  bool _canResend = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Dastlabki fokusni "Yuborish" tugmasiga qo'yish
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && context.mounted) {
+        FocusScope.of(context).requestFocus(_submitFocusNode);
+      }
+    });
+    // Fokus holatini kuzatish uchun debug va yangilanish
+    _addFocusListeners();
+    _startTimerIfNeeded();
+  }
+
+  void _addFocusListeners() {
+    final focusNodes = [
+      _phoneFocusNode,
+      _submitFocusNode,
+      _switchAuthModeFocusNode,
+      ..._codeFocusNodes,
+      _fullNameFocusNode,
+      _usernameFocusNode,
+      _datePickerFocusNode,
+      _genderFocusNode,
+    ];
+    for (var node in focusNodes) {
+      node.addListener(() {
+        debugPrint("${node.runtimeType} focus: ${node.hasFocus}");
+        setState(() {}); // Har bir fokus o'zgarishida UI yangilanishi
+      });
+    }
+  }
+
+  void _startTimerIfNeeded() {
+    if (_isCodeSent) {
+      _startTimer();
+    }
+  }
+
+  void _startTimer() {
+    _remainingSeconds = 60;
+    _canResend = false;
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_remainingSeconds > 0) {
+        setState(() => _remainingSeconds--);
+      } else {
+        setState(() {
+          _canResend = true;
+          timer.cancel();
+        });
+      }
+    });
+  }
+
+  bool _isPhoneValid() {
+    final rawPhone = _phoneController.text.replaceAll(RegExp(r'[^0-9]'), '');
+    return rawPhone.length == 9;
+  }
+
+  bool _isFormValid() {
+    if (_isCodeSent) {
+      return _codeControllers.every((c) => c.text.isNotEmpty);
+    } else if (_isLoginMode) {
+      return _isPhoneValid();
+    } else {
+      return _isPhoneValid() &&
+          _fullNameController.text.isNotEmpty &&
+          _usernameController.text.isNotEmpty &&
+          _selectedBirthDate != null &&
+          _selectedGender != null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              image: _tryLoadAssetImage('assets/images/background.png'),
+            ),
+          ),
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.black.withOpacity(0.2), // Engilroq gradient TV uchun
+                  Colors.black.withOpacity(0.8),
+                ],
+              ),
+            ),
+          ),
+          Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 80,
+                vertical: 40,
+              ), // Katta padding TV uchun
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center, // Markazga joylash
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 24),
+                    child: _tryLoadAssetImageWidget(
+                      'assets/images/logo.png',
+                      height: 80, // Katta logo
+                    ),
+                  ),
+                  Text(
+                    _isCodeSent ? "Kodni kiriting" : "Raqamingizni kiriting",
+                    style: const TextStyle(
+                      fontSize: 24, // Katta font
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  if (_isCodeSent) ...[
+                    _buildCodeInputFields(),
+                  ] else if (_isLoginMode) ...[
+                    _buildPhoneField(),
+                  ] else ...[
+                    _buildPhoneField(),
+                    const SizedBox(height: 20),
+                    _buildTextField(
+                      controller: _fullNameController,
+                      focusNode: _fullNameFocusNode,
+                      label: "To'liq ism",
+                    ),
+                    const SizedBox(height: 20),
+                    _buildTextField(
+                      controller: _usernameController,
+                      focusNode: _usernameFocusNode,
+                      label: "Foydalanuvchi nomi",
+                    ),
+                    const SizedBox(height: 20),
+                    _buildDatePicker(),
+                    const SizedBox(height: 20),
+                    _buildGenderDropdown(),
+                  ],
+                  if (_error != null) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      _error!,
+                      style: const TextStyle(
+                        color: Colors.redAccent,
+                        fontSize: 18, // Katta xato matni
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 24),
+                  Focus(
+                    focusNode: _submitFocusNode,
+                    canRequestFocus: true,
+                    descendantsAreFocusable: true,
+                    onFocusChange: (hasFocus) {
+                      setState(() {}); // Fokus o'zgarishi
+                    },
+                    onKey: (node, event) {
+                      if (event is RawKeyDownEvent &&
+                          event.logicalKey == LogicalKeyboardKey.select &&
+                          _isFormValid() &&
+                          !_isLoading) {
+                        _handleAction();
+                        return KeyEventResult.handled;
+                      }
+                      return KeyEventResult.ignored;
+                    },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        border:
+                            _submitFocusNode.hasFocus
+                                ? Border.all(
+                                  color: Colors.yellowAccent,
+                                  width: 3,
+                                ) // Kuchli fokus effekti
+                                : null,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow:
+                            _submitFocusNode.hasFocus
+                                ? [
+                                  BoxShadow(
+                                    color: Colors.yellowAccent.withOpacity(0.5),
+                                    blurRadius: 8,
+                                  ),
+                                ]
+                                : null, // Fokusda soyali effekt
+                      ),
+                      child: ElevatedButton(
+                        onPressed:
+                            _isFormValid() && !_isLoading
+                                ? _handleAction
+                                : null,
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 80,
+                            vertical: 20,
+                          ), // Katta tugma
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          backgroundColor: const Color(0xFFE91E63),
+                          elevation: 8, // Kuchli elevatsiya
+                          textStyle: const TextStyle(
+                            fontSize: 20,
+                          ), // Katta matn
+                        ),
+                        child:
+                            _isLoading
+                                ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 3,
+                                    color: Colors.white,
+                                  ),
+                                )
+                                : Text(
+                                  _isCodeSent
+                                      ? "Tasdiqlash ($_remainingSeconds)"
+                                      : _canResend
+                                      ? "Qayta yuborish"
+                                      : "Yuborish",
+                                  style: const TextStyle(color: Colors.white),
+                                ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  if (!_isCodeSent)
+                    Focus(
+                      focusNode: _switchAuthModeFocusNode,
+                      canRequestFocus: true,
+                      descendantsAreFocusable: true,
+                      onFocusChange: (hasFocus) {
+                        setState(() {}); // Fokus o'zgarishi
+                      },
+                      onKey: (node, event) {
+                        if (event is RawKeyDownEvent &&
+                            event.logicalKey == LogicalKeyboardKey.select &&
+                            !_isLoading) {
+                          setState(() {
+                            _isLoginMode = !_isLoginMode;
+                            _resetFields();
+                          });
+                          return KeyEventResult.handled;
+                        }
+                        return KeyEventResult.ignored;
+                      },
+                      child: Container(
+                        decoration: BoxDecoration(
+                          border:
+                              _switchAuthModeFocusNode.hasFocus
+                                  ? Border.all(
+                                    color: Colors.yellowAccent,
+                                    width: 3,
+                                  )
+                                  : null,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow:
+                              _switchAuthModeFocusNode.hasFocus
+                                  ? [
+                                    BoxShadow(
+                                      color: Colors.yellowAccent.withOpacity(
+                                        0.5,
+                                      ),
+                                      blurRadius: 8,
+                                    ),
+                                  ]
+                                  : null,
+                        ),
+                        child: TextButton(
+                          onPressed:
+                              _isLoading
+                                  ? null
+                                  : () => setState(() {
+                                    _isLoginMode = !_isLoginMode;
+                                    _resetFields();
+                                  }),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 40,
+                              vertical: 16,
+                            ),
+                            textStyle: const TextStyle(fontSize: 18),
+                          ),
+                          child: Text(
+                            _isLoginMode
+                                ? "Ro'yxatdan o'tishni xohlaysizmi?"
+                                : "Kirishni xohlaysizmi?",
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (!_isCodeSent) ...[
+                    const SizedBox(height: 20),
+                    Text(
+                      "Agar raqamli klaviatura ko'rinmasa, qurilma sozlamalarida virtual klaviaturani faollashtiring.",
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.7),
+                        fontSize: 16,
+                      ), // Katta maslahat matni
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  DecorationImage? _tryLoadAssetImage(String path) {
+    try {
+      return DecorationImage(
+        image: AssetImage(path),
+        fit: BoxFit.cover,
+        opacity: 0.2, // Engilroq opacity TV uchun
+      );
+    } catch (e) {
+      debugPrint("Rasm yuklashda xatolik: $e");
+      return null;
+    }
+  }
+
+  Widget _tryLoadAssetImageWidget(String path, {double? height}) {
+    try {
+      return Image.asset(path, height: height);
+    } catch (e) {
+      debugPrint("Rasm yuklashda xatolik: $e");
+      return Container(
+        height: height,
+        color: Colors.grey,
+        child: const Center(
+          child: Text("Rasm topilmadi", style: TextStyle(fontSize: 20)),
+        ),
+      );
+    }
+  }
+
+  Widget _buildPhoneField() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 40),
+      child: TextField(
+        focusNode: _phoneFocusNode,
+        controller: _phoneController,
+        decoration: InputDecoration(
+          prefixIcon: const Icon(
+            Icons.phone,
+            color: Colors.white,
+            size: 32,
+          ), // Katta ikonka
+          prefixText: "+998 ",
+          prefixStyle: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+            fontSize: 20,
+          ),
+          hintText: "XX XXX XX XX",
+          hintStyle: TextStyle(
+            color: Colors.white.withOpacity(0.5),
+            fontSize: 20,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide.none,
+          ),
+          filled: true,
+          fillColor: Colors.black.withOpacity(0.4), // Yumshoqroq fon
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 20,
+            horizontal: 24,
+          ), // Katta padding
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(
+              color:
+                  _phoneFocusNode.hasFocus
+                      ? Colors.yellowAccent
+                      : Colors.white.withOpacity(0.4),
+              width: _phoneFocusNode.hasFocus ? 3 : 1.5,
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: Colors.yellowAccent, width: 3),
+          ),
+        ),
+        style: const TextStyle(color: Colors.white, fontSize: 20),
+        keyboardType: TextInputType.number,
+        inputFormatters: [PhoneNumberFormatter()],
+        enabled: !_isLoading,
+        onChanged: (value) => setState(() {}),
+        onEditingComplete: () {
+          if (_isPhoneValid()) {
+            FocusScope.of(context).requestFocus(_submitFocusNode);
+          } else {
+            FocusScope.of(context).requestFocus(_phoneFocusNode);
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildCodeInputFields() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: RawKeyboardListener(
+        focusNode: FocusNode(),
+        onKey: (RawKeyEvent event) {
+          if (event is RawKeyDownEvent) {
+            final currentFocusIndex = _codeFocusNodes.indexWhere(
+              (node) => node.hasFocus,
+            );
+            if (currentFocusIndex == -1) return;
+            if (event.logicalKey == LogicalKeyboardKey.backspace &&
+                _codeControllers[currentFocusIndex].text.isEmpty &&
+                currentFocusIndex > 0) {
+              FocusScope.of(
+                context,
+              ).requestFocus(_codeFocusNodes[currentFocusIndex - 1]);
+            } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft &&
+                currentFocusIndex > 0) {
+              FocusScope.of(
+                context,
+              ).requestFocus(_codeFocusNodes[currentFocusIndex - 1]);
+            } else if (event.logicalKey == LogicalKeyboardKey.arrowRight &&
+                currentFocusIndex < 3) {
+              FocusScope.of(
+                context,
+              ).requestFocus(_codeFocusNodes[currentFocusIndex + 1]);
+            }
+          }
+        },
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(4, (index) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+              ), // Katta oraliq
+              child: SizedBox(
+                width: 80, // Katta maydon
+                child: TextField(
+                  focusNode: _codeFocusNodes[index],
+                  controller: _codeControllers[index],
+                  decoration: InputDecoration(
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                    filled: true,
+                    fillColor: Colors.black.withOpacity(0.4),
+                    counterText: "",
+                    contentPadding: const EdgeInsets.symmetric(vertical: 20),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide(
+                        color:
+                            _codeFocusNodes[index].hasFocus
+                                ? Colors.yellowAccent
+                                : Colors.white.withOpacity(0.4),
+                        width: _codeFocusNodes[index].hasFocus ? 3 : 1.5,
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: const BorderSide(
+                        color: Colors.yellowAccent,
+                        width: 3,
+                      ),
+                    ),
+                  ),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                  ), // Katta matn
+                  keyboardType: TextInputType.number,
+                  textAlign: TextAlign.center,
+                  maxLength: 1,
+                  obscureText: true,
+                  obscuringCharacter: '*',
+                  enabled: !_isLoading,
+                  onChanged: (value) {
+                    if (value.isNotEmpty && index < 3) {
+                      FocusScope.of(
+                        context,
+                      ).requestFocus(_codeFocusNodes[index + 1]);
+                    } else if (value.isEmpty && index > 0) {
+                      _codeControllers[index].clear();
+                      FocusScope.of(
+                        context,
+                      ).requestFocus(_codeFocusNodes[index - 1]);
+                    }
+                    if (index == 3 && value.isNotEmpty) {
+                      FocusScope.of(context).requestFocus(_submitFocusNode);
+                    }
+                  },
+                  onEditingComplete: () {
+                    if (index < 3 && _codeControllers[index].text.isNotEmpty) {
+                      FocusScope.of(
+                        context,
+                      ).requestFocus(_codeFocusNodes[index + 1]);
+                    } else if (index == 3 &&
+                        _codeControllers[index].text.isNotEmpty) {
+                      _confirmCode();
+                    }
+                  },
+                ),
+              ),
+            );
+          }),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required FocusNode focusNode,
+    required String label,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 40),
+      child: TextField(
+        focusNode: focusNode,
+        controller: controller,
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(color: Colors.white70, fontSize: 18),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide.none,
+          ),
+          filled: true,
+          fillColor: Colors.black.withOpacity(0.4),
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 20,
+            horizontal: 24,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(
+              color:
+                  focusNode.hasFocus
+                      ? Colors.yellowAccent
+                      : Colors.white.withOpacity(0.4),
+              width: focusNode.hasFocus ? 3 : 1.5,
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: Colors.yellowAccent, width: 3),
+          ),
+        ),
+        style: const TextStyle(color: Colors.white, fontSize: 20),
+        enabled: !_isLoading,
+        onChanged: (value) => setState(() {}),
+      ),
+    );
+  }
+
+  Widget _buildDatePicker() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 40),
+      child: Focus(
+        focusNode: _datePickerFocusNode,
+        onFocusChange: (hasFocus) {
+          if (hasFocus) {
+            _selectDate();
+          }
+          setState(() {});
+        },
+        onKey: (node, event) {
+          if (event is RawKeyDownEvent &&
+              event.logicalKey == LogicalKeyboardKey.select) {
+            _selectDate();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color:
+                  _datePickerFocusNode.hasFocus
+                      ? Colors.yellowAccent
+                      : Colors.white.withOpacity(0.4),
+              width: _datePickerFocusNode.hasFocus ? 3 : 1.5,
+            ),
+            borderRadius: BorderRadius.circular(16),
+            color: Colors.black.withOpacity(0.4),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                _selectedBirthDate == null
+                    ? "Tug'ilgan sanani tanlang"
+                    : DateFormat('dd MMMM yyyy').format(_selectedBirthDate!),
+                style: TextStyle(
+                  color:
+                      _selectedBirthDate == null
+                          ? Colors.white70
+                          : Colors.white,
+                  fontSize: 20,
+                ),
+              ),
+              const Icon(Icons.calendar_today, color: Colors.white, size: 32),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _selectDate() async {
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: _selectedBirthDate ?? DateTime.now(),
+      firstDate: DateTime(1900),
+      lastDate: DateTime.now(),
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.dark().copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: Color(0xFFE91E63),
+              onPrimary: Colors.white,
+              surface: Colors.black,
+              onSurface: Colors.white,
+            ),
+            dialogTheme: DialogTheme(
+              backgroundColor: Colors.black,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+            textTheme: const TextTheme(
+              bodyLarge: TextStyle(fontSize: 20), // Katta fontlar dialogda
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (pickedDate != null) {
+      setState(() => _selectedBirthDate = pickedDate);
+    }
+  }
+
+  Widget _buildGenderDropdown() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 40),
+      child: DropdownButtonFormField<int>(
+        focusNode: _genderFocusNode,
+        value: _selectedGender,
+        decoration: InputDecoration(
+          labelText: "Jins",
+          labelStyle: const TextStyle(color: Colors.white70, fontSize: 18),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide.none,
+          ),
+          filled: true,
+          fillColor: Colors.black.withOpacity(0.4),
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 20,
+            horizontal: 24,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(
+              color:
+                  _genderFocusNode.hasFocus
+                      ? Colors.yellowAccent
+                      : Colors.white.withOpacity(0.4),
+              width: _genderFocusNode.hasFocus ? 3 : 1.5,
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: Colors.yellowAccent, width: 3),
+          ),
+        ),
+        style: const TextStyle(color: Colors.white, fontSize: 20),
+        dropdownColor: Colors.black.withOpacity(0.9),
+        items: const [
+          DropdownMenuItem(
+            value: 1,
+            child: Text("Erkak", style: TextStyle(fontSize: 20)),
+          ),
+          DropdownMenuItem(
+            value: 0,
+            child: Text("Ayol", style: TextStyle(fontSize: 20)),
+          ),
+        ],
+        onChanged:
+            _isLoading
+                ? null
+                : (value) => setState(() => _selectedGender = value),
+      ),
+    );
+  }
+
+  Future<void> _handleAction() async {
+    if (_isCodeSent) {
+      await _confirmCode();
+    } else {
+      await _sendPhone();
+    }
+  }
+
+  Future<void> _sendPhone() async {
+    final rawPhone = _phoneController.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final phone = "998$rawPhone";
+    if (rawPhone.length != 9) {
+      setState(() => _error = "To'liq raqam kiriting");
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    final result = await ApiService.sendPhone(phone);
+
+    if (!mounted) return;
+
+    setState(() => _isLoading = false);
+
+    if (result) {
+      setState(() => _isCodeSent = true);
+      _startTimer();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && context.mounted) {
+          FocusScope.of(context).requestFocus(_codeFocusNodes[0]);
+          SystemChannels.textInput.invokeMethod('TextInput.show');
+        }
+      });
+    } else {
+      setState(() => _error = "SMS yuborishda xatolik yuz berdi");
+    }
+  }
+
+  Future<void> _confirmCode() async {
+    final code = _codeControllers.map((c) => c.text).join();
+    if (code.length != 4) {
+      setState(() => _error = "To'liq kod kiriting");
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    final result = await ApiService.confirmSms(code);
+
+    if (!mounted) return;
+
+    setState(() => _isLoading = false);
+
+    if (result['success']) {
+      if (_isLoginMode) {
+        _navigateToMainScreen();
+      } else {
+        await _registerUser();
+      }
+    } else if (result.containsKey('devices')) {
+      _showDeviceSelectionDialog(result['devices']);
+    } else {
+      setState(() => _error = result['message'] ?? "Kod tasdiqlashda xatolik");
+    }
+  }
+
+  Future<void> _showDeviceSelectionDialog(List<dynamic> devices) async {
+    final prefs = await SharedPreferences.getInstance();
+    final currentTokenId = prefs.getString('token_id');
+
+    if (devices.length > 2) {
+      setState(() => _isLoading = true);
+      final tokenIdToKick =
+          devices
+              .firstWhere(
+                (device) => device['id'].toString() != currentTokenId,
+                orElse: () => devices.first,
+              )['id']
+              .toString();
+      final kickResult = await ApiService.kickDevice(tokenIdToKick);
+
+      if (!mounted) return;
+
+      if (kickResult) {
+        final confirmResult = await ApiService.confirmSms(
+          _codeControllers.map((c) => c.text).join(),
+        );
+        setState(() => _isLoading = false);
+        if (confirmResult['success']) {
+          if (_isLoginMode) {
+            _navigateToMainScreen();
+          } else {
+            await _registerUser();
+          }
+        } else {
+          setState(() => _error = "Tasdiqlashda xatolik");
+        }
+      } else {
+        setState(() {
+          _isLoading = false;
+          _error = "Qurilma o'chirishda xatolik";
+        });
+      }
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            backgroundColor: Colors.black.withOpacity(0.9),
+            title: const Text(
+              "Bir nechta qurilma topildi",
+              style: TextStyle(fontSize: 24),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  "Bitta qurilmani o'chirib, davom eting:",
+                  style: TextStyle(fontSize: 20),
+                ),
+                const SizedBox(height: 16),
+                ...devices
+                    .where(
+                      (device) => device['id'].toString() != currentTokenId,
+                    )
+                    .map(
+                      (device) => ListTile(
+                        title: Text(
+                          device['device_name'],
+                          style: const TextStyle(fontSize: 20),
+                        ),
+                        subtitle: Text(
+                          "ID: ${device['id'].toString()}",
+                          style: const TextStyle(fontSize: 18),
+                        ),
+                        onTap: () async {
+                          Navigator.pop(context);
+                          setState(() => _isLoading = true);
+
+                          final kickResult = await ApiService.kickDevice(
+                            device['id'].toString(),
+                          );
+                          if (kickResult) {
+                            final confirmResult = await ApiService.confirmSms(
+                              _codeControllers.map((c) => c.text).join(),
+                            );
+                            setState(() => _isLoading = false);
+                            if (confirmResult['success']) {
+                              if (_isLoginMode) {
+                                _navigateToMainScreen();
+                              } else {
+                                await _registerUser();
+                              }
+                            } else {
+                              setState(() => _error = "Tasdiqlashda xatolik");
+                            }
+                          } else {
+                            setState(() {
+                              _isLoading = false;
+                              _error = "Qurilma o'chirishda xatolik";
+                            });
+                          }
+                        },
+                      ),
+                    ),
+              ],
+            ),
+          ),
+    );
+  }
+
+  Future<void> _registerUser() async {
+    final fullName = _fullNameController.text;
+    final username = _usernameController.text;
+    if (fullName.isEmpty ||
+        username.isEmpty ||
+        _selectedBirthDate == null ||
+        _selectedGender == null) {
+      setState(() => _error = "Barcha maydonlarni to'ldiring");
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('auth_token') ?? '';
+    final birthDateUnix = (_selectedBirthDate!.millisecondsSinceEpoch ~/ 1000);
+
+    final result = await ApiService.updateUser(
+      fullName: fullName,
+      username: username,
+      birthDate: birthDateUnix,
+      sex: _selectedGender!,
+      token: token,
+    );
+
+    if (!mounted) return;
+
+    setState(() => _isLoading = false);
+
+    if (result) {
+      _navigateToMainScreen();
+    } else {
+      setState(() => _error = "Ro'yxatdan o'tishda xatolik yuz berdi");
+    }
+  }
+
+  void _navigateToMainScreen() {
+    Navigator.pushReplacement(context, createSlideRoute(const MainScreen()));
+  }
+
+  void _resetFields() {
+    _error = null;
+    _phoneController.clear();
+    for (var controller in _codeControllers) controller.clear();
+    _fullNameController.clear();
+    _usernameController.clear();
+    _selectedBirthDate = null;
+    _selectedGender = null;
+    _isCodeSent = false;
+    _remainingSeconds = 60;
+    _canResend = false;
+    _timer?.cancel();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && context.mounted) {
+        FocusScope.of(context).requestFocus(_submitFocusNode);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    final focusNodes = [
+      _phoneFocusNode,
+      _submitFocusNode,
+      _switchAuthModeFocusNode,
+      ..._codeFocusNodes,
+      _fullNameFocusNode,
+      _usernameFocusNode,
+      _datePickerFocusNode,
+      _genderFocusNode,
+    ];
+    for (var node in focusNodes) node.dispose();
+    _phoneController.dispose();
+    for (var controller in _codeControllers) controller.dispose();
+    _fullNameController.dispose();
+    _usernameController.dispose();
+    _timer?.cancel();
+    super.dispose();
+  }
+}

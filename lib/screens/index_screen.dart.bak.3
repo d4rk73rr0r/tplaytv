@@ -1,0 +1,1185 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:palette_generator/palette_generator.dart';
+import 'package:intl/intl.dart';
+import 'dart:async';
+import 'dart:ui';
+import 'dart:math' as math;
+
+class Movie {
+  final String title;
+  final String year;
+  final String rating;
+  final String imageUrl;
+  final String category;
+
+  Movie({
+    required this.title,
+    required this.year,
+    required this.rating,
+    required this.imageUrl,
+    required this.category,
+  });
+}
+
+class Particle {
+  Offset position;
+  double size;
+  double speed;
+  Color color;
+  double opacity;
+
+  Particle({
+    required this.position,
+    required this.size,
+    required this.speed,
+    required this.color,
+    required this.opacity,
+  });
+}
+
+class IndexScreen extends StatefulWidget {
+  const IndexScreen({super.key});
+
+  @override
+  State<IndexScreen> createState() => _IndexScreenState();
+}
+
+class _IndexScreenState extends State<IndexScreen>
+    with TickerProviderStateMixin {
+  bool _isMenuOpen = false;
+  int _selectedMenuIndex = 0;
+  int _selectedMovieIndex = 0;
+  int _selectedSectionIndex = 0;
+  int _selectedAppBarIndex = -1;
+  Color _backgroundColor = const Color(0xFF1a1a1a);
+  late AnimationController _animationController;
+  late Animation<Offset> _slideAnimation;
+  late AnimationController _particleController;
+  late AnimationController _glowController;
+  late AnimationController _gradientController;
+  Timer? _clockTimer;
+  String _currentTime = '';
+  String _currentDate = '';
+  final List<Particle> _particles = [];
+
+  // Focus nodes
+  final FocusNode _menuFocusNode = FocusNode();
+  final FocusNode _contentFocusNode = FocusNode();
+  final FocusNode _appBarFocusNode = FocusNode();
+
+  // Scroll controllers
+  late ScrollController _scrollController;
+  final Map<int, ScrollController> _horizontalControllers = {};
+
+  // Section keys
+  final GlobalKey _nowWatchingKey = GlobalKey();
+  final GlobalKey _recommendedKey = GlobalKey();
+
+  final List<String> _menuItems = [
+    'Главная',
+    'Лента',
+    'Фильмы',
+    'Мультфильмы',
+    'Сериалы',
+    'Персоны',
+    'Каталог',
+    'Фильтр',
+    'Релизы',
+    'Аниме',
+    'Избранное',
+    'История',
+  ];
+
+  final List<IconData> _menuIcons = [
+    Icons.home_outlined,
+    Icons.star_outline,
+    Icons.movie_outlined,
+    Icons.child_care_outlined,
+    Icons.tv_outlined,
+    Icons.people_outline,
+    Icons.category_outlined,
+    Icons.filter_alt_outlined,
+    Icons.new_releases_outlined,
+    Icons.animation_outlined,
+    Icons.bookmark_border,
+    Icons.history,
+  ];
+
+  final List<Movie> _nowWatchingMovies = List.generate(
+    12,
+    (i) => Movie(
+      title: 'Фильм ${i + 1}',
+      year: '2025',
+      rating: (6.0 + (i % 5)).toStringAsFixed(1),
+      imageUrl: 'https://picsum.photos/300/450?random=${i + 10}',
+      category: 'Сейчас смотрят',
+    ),
+  );
+
+  final List<Movie> _recommendedMovies = List.generate(
+    15,
+    (i) => Movie(
+      title: 'Рекомендация ${i + 1}',
+      year: '202${3 + i % 3}',
+      rating: (7.0 + (i % 6) / 2).toStringAsFixed(1),
+      imageUrl: 'https://picsum.photos/300/450?random=${i + 30}',
+      category: 'Рекомендуем посмотреть',
+    ),
+  );
+
+  List<List<Movie>> get _allSections => [
+    _nowWatchingMovies,
+    _recommendedMovies,
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+
+    // Menu slide animation
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(-1.0, 0.0),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+
+    // Particle animation
+    _particleController = AnimationController(
+      duration: const Duration(seconds: 20),
+      vsync: this,
+    )..repeat();
+
+    // Glow pulse animation
+    _glowController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    )..repeat(reverse: true);
+
+    // Gradient animation
+    _gradientController = AnimationController(
+      duration: const Duration(seconds: 5),
+      vsync: this,
+    )..repeat();
+
+    _initializeParticles();
+    _updateDateTime();
+    _clockTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _updateDateTime(),
+    );
+
+    for (int i = 0; i < _allSections.length; i++) {
+      _horizontalControllers[i] = ScrollController();
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _contentFocusNode.requestFocus();
+      _updateBackgroundColor(0, 0);
+    });
+  }
+
+  void _initializeParticles() {
+    final random = math.Random();
+    for (int i = 0; i < 50; i++) {
+      _particles.add(
+        Particle(
+          position: Offset(
+            random.nextDouble() * 1000,
+            random.nextDouble() * 1000,
+          ),
+          size: random.nextDouble() * 3 + 1,
+          speed: random.nextDouble() * 0.5 + 0.2,
+          color: Colors.white,
+          opacity: random.nextDouble() * 0.3 + 0.1,
+        ),
+      );
+    }
+  }
+
+  void _updateDateTime() {
+    setState(() {
+      final now = DateTime.now();
+      _currentTime = DateFormat('HH:mm').format(now);
+      _currentDate = DateFormat('dd MMMM yyyy\nEEEE', 'ru_RU').format(now);
+    });
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    _particleController.dispose();
+    _glowController.dispose();
+    _gradientController.dispose();
+    _menuFocusNode.dispose();
+    _contentFocusNode.dispose();
+    _appBarFocusNode.dispose();
+    _clockTimer?.cancel();
+    _scrollController.dispose();
+    for (final c in _horizontalControllers.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _updateBackgroundColor(int sectionIndex, int movieIndex) async {
+    final movie = _allSections[sectionIndex][movieIndex];
+    try {
+      final palette = await PaletteGenerator.fromImageProvider(
+        NetworkImage(movie.imageUrl),
+        maximumColorCount: 20,
+      );
+      if (mounted) {
+        setState(() {
+          _backgroundColor =
+              palette.dominantColor?.color ?? const Color(0xFF1a1a1a);
+        });
+      }
+    } catch (e) {
+      debugPrint('Error generating palette: $e');
+    }
+  }
+
+  void _toggleMenu() {
+    setState(() {
+      _isMenuOpen = !_isMenuOpen;
+      if (_isMenuOpen) {
+        _animationController.forward();
+        _menuFocusNode.requestFocus();
+      } else {
+        _animationController.reverse();
+        _contentFocusNode.requestFocus();
+      }
+    });
+  }
+
+  void _scrollToSection(int sectionIndex) {
+    final key = sectionIndex == 0 ? _nowWatchingKey : _recommendedKey;
+    final ctx = key.currentContext;
+    if (ctx != null) {
+      Scrollable.ensureVisible(
+        ctx,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+        alignment: 0.0,
+      );
+    }
+  }
+
+  void _scrollToCurrentItem() {
+    final controller = _horizontalControllers[_selectedSectionIndex];
+    if (controller == null || !controller.hasClients) return;
+
+    const double itemWidth = 205.0;
+    final double viewportWidth = controller.position.viewportDimension;
+    final double targetOffset =
+        (_selectedMovieIndex * itemWidth) -
+        (viewportWidth / 2) +
+        (itemWidth / 2);
+
+    final double maxOffset = controller.position.maxScrollExtent;
+    final double clampedOffset = targetOffset.clamp(0.0, maxOffset);
+
+    controller.animateTo(
+      clampedOffset,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
+  }
+
+  KeyEventResult _handleMenuKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      setState(() {
+        _selectedMenuIndex = (_selectedMenuIndex + 1) % _menuItems.length;
+      });
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      setState(() {
+        _selectedMenuIndex =
+            (_selectedMenuIndex - 1 + _menuItems.length) % _menuItems.length;
+      });
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight ||
+        event.logicalKey == LogicalKeyboardKey.goBack) {
+      _toggleMenu();
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.select ||
+        event.logicalKey == LogicalKeyboardKey.enter) {
+      debugPrint('Menu selected: ${_menuItems[_selectedMenuIndex]}');
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
+  KeyEventResult _handleContentKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      if (_selectedMovieIndex == 0) {
+        _toggleMenu();
+        return KeyEventResult.handled;
+      }
+      setState(() {
+        _selectedMovieIndex--;
+        _updateBackgroundColor(_selectedSectionIndex, _selectedMovieIndex);
+      });
+      _scrollToCurrentItem();
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      final maxIndex = _allSections[_selectedSectionIndex].length - 1;
+      if (_selectedMovieIndex < maxIndex) {
+        setState(() {
+          _selectedMovieIndex++;
+          _updateBackgroundColor(_selectedSectionIndex, _selectedMovieIndex);
+        });
+        _scrollToCurrentItem();
+      }
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      if (_selectedSectionIndex == 0) {
+        setState(() {
+          _selectedAppBarIndex = 0;
+        });
+        _appBarFocusNode.requestFocus();
+        return KeyEventResult.handled;
+      }
+      setState(() {
+        _selectedSectionIndex--;
+        _selectedMovieIndex = 0;
+        _updateBackgroundColor(_selectedSectionIndex, _selectedMovieIndex);
+      });
+      _scrollToSection(_selectedSectionIndex);
+      _scrollToCurrentItem();
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      if (_selectedSectionIndex < _allSections.length - 1) {
+        setState(() {
+          _selectedSectionIndex++;
+          _selectedMovieIndex = 0;
+          _updateBackgroundColor(_selectedSectionIndex, _selectedMovieIndex);
+        });
+        _scrollToSection(_selectedSectionIndex);
+        _scrollToCurrentItem();
+      }
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.select ||
+        event.logicalKey == LogicalKeyboardKey.enter) {
+      final movie = _allSections[_selectedSectionIndex][_selectedMovieIndex];
+      debugPrint('Movie selected: ${movie.title}');
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
+  KeyEventResult _handleAppBarKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      if (_selectedAppBarIndex > 0) {
+        setState(() {
+          _selectedAppBarIndex--;
+        });
+      }
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      if (_selectedAppBarIndex < 4) {
+        setState(() {
+          _selectedAppBarIndex++;
+        });
+      }
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      setState(() {
+        _selectedAppBarIndex = -1;
+      });
+      _contentFocusNode.requestFocus();
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.select ||
+        event.logicalKey == LogicalKeyboardKey.enter) {
+      final buttons = [
+        'Search',
+        'Flash',
+        'Notifications',
+        'Settings',
+        'Profile',
+      ];
+      debugPrint('AppBar button selected: ${buttons[_selectedAppBarIndex]}');
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(
+        children: [
+          // Animated gradient background with particles
+          AnimatedBuilder(
+            animation: Listenable.merge([
+              _particleController,
+              _gradientController,
+            ]),
+            builder: (context, child) {
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 800),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      _backgroundColor,
+                      _backgroundColor.withOpacity(0.8),
+                      _backgroundColor.withOpacity(0.5),
+                      Colors.black,
+                    ],
+                    stops: [
+                      0.0,
+                      0.3 +
+                          math.sin(_gradientController.value * 2 * math.pi) *
+                              0.1,
+                      0.6 +
+                          math.cos(_gradientController.value * 2 * math.pi) *
+                              0.1,
+                      1.0,
+                    ],
+                  ),
+                ),
+                child: Stack(
+                  children: [
+                    // Particles
+                    CustomPaint(
+                      painter: ParticlePainter(
+                        particles: _particles,
+                        animation: _particleController.value,
+                      ),
+                      size: Size.infinite,
+                    ),
+                    // Blur overlay
+                    BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 100, sigmaY: 100),
+                      child: Container(color: Colors.black.withOpacity(0.2)),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+
+          // Main content with parallax effect
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            transform: Matrix4.translationValues(_isMenuOpen ? 280 : 0, 0, 0),
+            child: Column(
+              children: [
+                // AppBar
+                Focus(
+                  focusNode: _appBarFocusNode,
+                  onKeyEvent: _handleAppBarKeyEvent,
+                  child: _buildAppBar(),
+                ),
+                // Content
+                Expanded(
+                  child: Focus(
+                    focusNode: _contentFocusNode,
+                    onKeyEvent: _handleContentKeyEvent,
+                    child: SingleChildScrollView(
+                      controller: _scrollController,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 20),
+                          _buildMovieSection(
+                            'Сейчас смотрят',
+                            _nowWatchingMovies,
+                            0,
+                            _nowWatchingKey,
+                          ),
+                          const SizedBox(height: 50),
+                          _buildMovieSection(
+                            'Рекомендуем посмотреть',
+                            _recommendedMovies,
+                            1,
+                            _recommendedKey,
+                          ),
+                          const SizedBox(height: 100),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Dark overlay with blur
+          if (_isMenuOpen)
+            Positioned.fill(
+              left: 280,
+              child: GestureDetector(
+                onTap: _toggleMenu,
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                  child: Container(color: Colors.black.withOpacity(0.6)),
+                ),
+              ),
+            ),
+
+          // Enhanced sidebar menu
+          SlideTransition(
+            position: _slideAnimation,
+            child: Container(
+              width: 280,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF1c1c1e),
+                    const Color(0xFF1c1c1e).withOpacity(0.95),
+                  ],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.7),
+                    blurRadius: 30,
+                    spreadRadius: 10,
+                  ),
+                ],
+              ),
+              child: Focus(
+                focusNode: _menuFocusNode,
+                onKeyEvent: _handleMenuKeyEvent,
+                child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  itemCount: _menuItems.length,
+                  itemBuilder: (context, i) {
+                    final selected = _selectedMenuIndex == i;
+                    return TweenAnimationBuilder<double>(
+                      duration: const Duration(milliseconds: 300),
+                      tween: Tween(begin: 0.0, end: selected ? 1.0 : 0.0),
+                      builder: (context, value, child) {
+                        return Transform.translate(
+                          offset: Offset(value * 10, 0),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 250),
+                            margin: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              gradient:
+                                  selected
+                                      ? LinearGradient(
+                                        colors: [
+                                          Colors.cyanAccent.withOpacity(0.2),
+                                          Colors.cyanAccent.withOpacity(0.05),
+                                        ],
+                                      )
+                                      : null,
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow:
+                                  selected
+                                      ? [
+                                        BoxShadow(
+                                          color: Colors.cyanAccent.withOpacity(
+                                            0.3,
+                                          ),
+                                          blurRadius: 15,
+                                          spreadRadius: 2,
+                                        ),
+                                      ]
+                                      : [],
+                            ),
+                            child: ListTile(
+                              leading: AnimatedBuilder(
+                                animation: _glowController,
+                                builder: (context, child) {
+                                  return Transform.rotate(
+                                    angle:
+                                        selected
+                                            ? math.sin(
+                                                  _glowController.value *
+                                                      2 *
+                                                      math.pi,
+                                                ) *
+                                                0.1
+                                            : 0,
+                                    child: Icon(
+                                      _menuIcons[i],
+                                      color:
+                                          selected
+                                              ? Color.lerp(
+                                                Colors.cyanAccent,
+                                                Colors.white,
+                                                _glowController.value,
+                                              )
+                                              : Colors.white70,
+                                      size: selected ? 26 : 24,
+                                    ),
+                                  );
+                                },
+                              ),
+                              title: Text(
+                                _menuItems[i],
+                                style: TextStyle(
+                                  color:
+                                      selected ? Colors.white : Colors.white70,
+                                  fontSize: 16,
+                                  fontWeight:
+                                      selected
+                                          ? FontWeight.w600
+                                          : FontWeight.normal,
+                                  letterSpacing: selected ? 0.5 : 0,
+                                ),
+                              ),
+                              onTap: () {
+                                setState(() => _selectedMenuIndex = i);
+                              },
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAppBar() {
+    final appBarButtons = [
+      Icons.search,
+      Icons.flash_on,
+      Icons.notifications_outlined,
+      Icons.settings_outlined,
+      Icons.account_circle,
+    ];
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.black.withOpacity(0.8),
+            Colors.black.withOpacity(0.4),
+            Colors.transparent,
+          ],
+        ),
+      ),
+      child: Row(
+        children: [
+          AnimatedBuilder(
+            animation: _glowController,
+            builder: (context, child) {
+              return Transform.scale(
+                scale:
+                    1.0 + math.sin(_glowController.value * 2 * math.pi) * 0.05,
+                child: ShaderMask(
+                  shaderCallback:
+                      (bounds) => LinearGradient(
+                        colors: const [
+                          Colors.cyanAccent,
+                          Colors.blueAccent,
+                          Colors.purpleAccent,
+                        ],
+                        stops: [0.0, 0.5 + _glowController.value * 0.5, 1.0],
+                      ).createShader(bounds),
+                  child: const Icon(Icons.radar, size: 40, color: Colors.white),
+                ),
+              );
+            },
+          ),
+          const SizedBox(width: 15),
+          ShaderMask(
+            shaderCallback:
+                (bounds) => const LinearGradient(
+                  colors: [Colors.white, Colors.white70],
+                ).createShader(bounds),
+            child: const Text(
+              'Главная - TMDB',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+                letterSpacing: 1.2,
+              ),
+            ),
+          ),
+          const Spacer(),
+          ...List.generate(appBarButtons.length, (index) {
+            final isSelected = _selectedAppBarIndex == index;
+            return AnimatedBuilder(
+              animation: _glowController,
+              builder: (context, child) {
+                return TweenAnimationBuilder<double>(
+                  duration: const Duration(milliseconds: 300),
+                  tween: Tween(begin: 0.0, end: isSelected ? 1.0 : 0.0),
+                  builder: (context, value, child) {
+                    return Transform.scale(
+                      scale: 1.0 + value * 0.1,
+                      child: Container(
+                        margin: const EdgeInsets.only(right: 10),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color:
+                                isSelected
+                                    ? Color.lerp(
+                                      Colors.cyanAccent,
+                                      Colors.white,
+                                      _glowController.value,
+                                    )!
+                                    : Colors.transparent,
+                            width: 2,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          gradient:
+                              isSelected
+                                  ? RadialGradient(
+                                    colors: [
+                                      Colors.cyanAccent.withOpacity(0.2),
+                                      Colors.transparent,
+                                    ],
+                                  )
+                                  : null,
+                          boxShadow:
+                              isSelected
+                                  ? [
+                                    BoxShadow(
+                                      color: Colors.cyanAccent.withOpacity(
+                                        0.4 + _glowController.value * 0.3,
+                                      ),
+                                      blurRadius: 20,
+                                      spreadRadius: 3,
+                                    ),
+                                  ]
+                                  : [],
+                        ),
+                        child: IconButton(
+                          icon: Icon(
+                            appBarButtons[index],
+                            size: index == 4 ? 32 : 28,
+                          ),
+                          color: isSelected ? Colors.cyanAccent : Colors.white,
+                          onPressed: () {},
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            );
+          }),
+          const SizedBox(width: 20),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              AnimatedBuilder(
+                animation: _glowController,
+                builder: (context, child) {
+                  return Transform.scale(
+                    scale:
+                        1.0 +
+                        math.sin(_glowController.value * 2 * math.pi) * 0.02,
+                    child: Text(
+                      _currentTime,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                        letterSpacing: 2,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              Text(
+                _currentDate.split('\n')[0],
+                style: const TextStyle(fontSize: 12, color: Colors.white70),
+              ),
+              Text(
+                _currentDate.split('\n')[1],
+                style: const TextStyle(fontSize: 10, color: Colors.white60),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMovieSection(
+    String title,
+    List<Movie> movies,
+    int sectionIndex,
+    GlobalKey key,
+  ) {
+    return Padding(
+      key: key,
+      padding: const EdgeInsets.symmetric(horizontal: 30),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              ShaderMask(
+                shaderCallback:
+                    (bounds) => LinearGradient(
+                      colors: [Colors.white, Colors.white.withOpacity(0.8)],
+                    ).createShader(bounds),
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+              if (title == 'Сейчас смотрят')
+                TextButton(
+                  onPressed: () {},
+                  child: const Text(
+                    'Еще',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.cyanAccent,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            height: 290,
+            child: ListView.builder(
+              controller: _horizontalControllers[sectionIndex],
+              scrollDirection: Axis.horizontal,
+              physics: const ClampingScrollPhysics(),
+              itemCount: movies.length,
+              itemBuilder: (context, index) {
+                final movie = movies[index];
+                final isSelected =
+                    _selectedSectionIndex == sectionIndex &&
+                    _selectedMovieIndex == index;
+
+                return TweenAnimationBuilder<double>(
+                  duration: const Duration(milliseconds: 300),
+                  tween: Tween(begin: 0.0, end: isSelected ? 1.0 : 0.0),
+                  builder: (context, value, child) {
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      width: 185,
+                      margin: const EdgeInsets.only(right: 20),
+                      transform:
+                          Matrix4.identity()
+                            ..setEntry(3, 2, 0.001)
+                            ..rotateY(value * 0.1)
+                            ..scale(1.0 + value * 0.05),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          AnimatedBuilder(
+                            animation: _glowController,
+                            builder: (context, child) {
+                              return AnimatedContainer(
+                                duration: const Duration(milliseconds: 300),
+                                height: 245,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color:
+                                        isSelected
+                                            ? Color.lerp(
+                                              Colors.cyanAccent,
+                                              Colors.white,
+                                              _glowController.value * 0.3,
+                                            )!
+                                            : Colors.transparent,
+                                    width: isSelected ? 4 : 0,
+                                  ),
+                                  boxShadow:
+                                      isSelected
+                                          ? [
+                                            BoxShadow(
+                                              color: Colors.cyanAccent
+                                                  .withOpacity(
+                                                    0.5 +
+                                                        _glowController.value *
+                                                            0.3,
+                                                  ),
+                                              blurRadius:
+                                                  25 +
+                                                  _glowController.value * 10,
+                                              spreadRadius:
+                                                  5 + _glowController.value * 3,
+                                            ),
+                                            BoxShadow(
+                                              color: Colors.blueAccent
+                                                  .withOpacity(0.3),
+                                              blurRadius: 40,
+                                              spreadRadius: 2,
+                                            ),
+                                          ]
+                                          : [
+                                            BoxShadow(
+                                              color: Colors.black.withOpacity(
+                                                0.5,
+                                              ),
+                                              blurRadius: 15,
+                                              offset: const Offset(0, 8),
+                                            ),
+                                          ],
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      // Shimmer loading effect
+                                      ShaderMask(
+                                        shaderCallback:
+                                            (bounds) => LinearGradient(
+                                              begin: Alignment.topLeft,
+                                              end: Alignment.bottomRight,
+                                              colors: [
+                                                Colors.black.withOpacity(0.8),
+                                                Colors.black.withOpacity(0.4),
+                                                Colors.black.withOpacity(0.8),
+                                              ],
+                                              stops: const [0.0, 0.5, 1.0],
+                                            ).createShader(bounds),
+                                        blendMode: BlendMode.dstIn,
+                                        child: Image.network(
+                                          movie.imageUrl,
+                                          fit: BoxFit.cover,
+                                          loadingBuilder: (
+                                            context,
+                                            child,
+                                            progress,
+                                          ) {
+                                            if (progress == null) return child;
+                                            return Container(
+                                              decoration: BoxDecoration(
+                                                gradient: LinearGradient(
+                                                  begin: const Alignment(
+                                                    -1.0,
+                                                    -0.3,
+                                                  ),
+                                                  end: const Alignment(
+                                                    1.0,
+                                                    0.3,
+                                                  ),
+                                                  colors: [
+                                                    Colors.grey[850]!,
+                                                    Colors.grey[800]!,
+                                                    Colors.grey[850]!,
+                                                  ],
+                                                  stops: const [0.0, 0.5, 1.0],
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                          errorBuilder:
+                                              (context, _, __) => Container(
+                                                color: Colors.grey[850],
+                                                child: const Icon(
+                                                  Icons.movie,
+                                                  size: 60,
+                                                  color: Colors.grey,
+                                                ),
+                                              ),
+                                        ),
+                                      ),
+                                      // Gradient overlay for depth
+                                      if (isSelected)
+                                        Container(
+                                          decoration: BoxDecoration(
+                                            gradient: LinearGradient(
+                                              begin: Alignment.topCenter,
+                                              end: Alignment.bottomCenter,
+                                              colors: [
+                                                Colors.transparent,
+                                                Colors.cyanAccent.withOpacity(
+                                                  0.1,
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      // Rating badge
+                                      Positioned(
+                                        top: 10,
+                                        right: 10,
+                                        child: AnimatedContainer(
+                                          duration: const Duration(
+                                            milliseconds: 300,
+                                          ),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 6,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            gradient: LinearGradient(
+                                              colors: [
+                                                Colors.black.withOpacity(0.85),
+                                                Colors.black.withOpacity(0.7),
+                                              ],
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                            border:
+                                                isSelected
+                                                    ? Border.all(
+                                                      color: Colors.cyanAccent
+                                                          .withOpacity(0.5),
+                                                      width: 1,
+                                                    )
+                                                    : null,
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              const Icon(
+                                                Icons.star,
+                                                color: Colors.amber,
+                                                size: 14,
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                movie.rating,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 8),
+                          AnimatedDefaultTextStyle(
+                            duration: const Duration(milliseconds: 300),
+                            style: TextStyle(
+                              color: isSelected ? Colors.white : Colors.white70,
+                              fontSize: isSelected ? 15 : 14,
+                              fontWeight:
+                                  isSelected
+                                      ? FontWeight.w600
+                                      : FontWeight.normal,
+                              letterSpacing: isSelected ? 0.5 : 0,
+                            ),
+                            child: Text(
+                              movie.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Text(
+                            movie.year,
+                            style: TextStyle(
+                              color:
+                                  isSelected ? Colors.white60 : Colors.white70,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Particle Painter for background animation
+class ParticlePainter extends CustomPainter {
+  final List<Particle> particles;
+  final double animation;
+
+  ParticlePainter({required this.particles, required this.animation});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final particle in particles) {
+      final paint =
+          Paint()
+            ..color = particle.color.withOpacity(particle.opacity)
+            ..style = PaintingStyle.fill;
+
+      final x =
+          (particle.position.dx + animation * particle.speed * 100) %
+          size.width;
+      final y =
+          (particle.position.dy +
+              math.sin(animation * 2 * math.pi + particle.position.dx) * 20) %
+          size.height;
+
+      canvas.drawCircle(Offset(x, y), particle.size, paint);
+
+      // Add glow effect
+      final glowPaint =
+          Paint()
+            ..color = particle.color.withOpacity(particle.opacity * 0.3)
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+      canvas.drawCircle(Offset(x, y), particle.size * 2, glowPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(ParticlePainter oldDelegate) => true;
+}

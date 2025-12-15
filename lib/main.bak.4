@@ -1,0 +1,296 @@
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:tplaytv/screens/auth_screen.dart';
+import 'package:tplaytv/screens/index_screen.dart';
+import 'package:tplaytv/screens/tv_channels_screen.dart';
+import 'package:tplaytv/screens/catalog_screen.dart';
+import 'package:tplaytv/screens/favorites_screen.dart';
+//import 'package:tplaytv/screens/profile_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_iconly/flutter_iconly.dart';
+import 'package:flutter/services.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const RiyaPlayApp());
+}
+
+class RiyaPlayApp extends StatefulWidget {
+  const RiyaPlayApp({super.key});
+
+  @override
+  State<RiyaPlayApp> createState() => _RiyaPlayAppState();
+}
+
+class _RiyaPlayAppState extends State<RiyaPlayApp> {
+  Future<String?> _checkAuthToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('auth_token');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'TPlay TV',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        scaffoldBackgroundColor: const Color(0xFF111827),
+        textTheme: GoogleFonts.poppinsTextTheme(
+          ThemeData.dark().textTheme.copyWith(
+            displayLarge: const TextStyle(fontSize: 24.0, color: Colors.white),
+            displayMedium: const TextStyle(fontSize: 20.0, color: Colors.white),
+            bodyLarge: const TextStyle(fontSize: 14.0, color: Colors.white),
+            bodyMedium: const TextStyle(fontSize: 12.0, color: Colors.white),
+            labelLarge: const TextStyle(fontSize: 14.0, color: Colors.white),
+          ),
+        ),
+        iconTheme: const IconThemeData(color: Colors.white, size: 24.0),
+        appBarTheme: AppBarTheme(
+          backgroundColor: const Color(0xFF111827),
+          titleTextStyle: GoogleFonts.poppins(
+            fontSize: 20,
+            fontWeight: FontWeight.w500,
+            color: Colors.white,
+          ),
+        ),
+      ),
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: const TextScaler.linear(1.0), boldText: false),
+          child: child!,
+        );
+      },
+      home: FutureBuilder<String?>(
+        future: _checkAuthToken(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasData && snapshot.data!.isNotEmpty) {
+            return const MainScreen();
+          }
+          return const AuthScreen();
+        },
+      ),
+    );
+  }
+}
+
+class MainScreen extends StatefulWidget {
+  const MainScreen({super.key});
+
+  @override
+  State<MainScreen> createState() => _MainScreenState();
+}
+
+class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
+  int _selectedIndex = 0;
+
+  final List<Widget> _screens = [
+    const IndexScreen(),
+    const TVChannelsScreen(),
+    const CatalogScreen(),
+    const FavoritesScreen(),
+    // const ProfileScreen(),
+  ];
+
+  final List<Map<String, dynamic>> _menuItems = [
+    {
+      'icon': IconlyLight.home,
+      'activeIcon': IconlyBold.home,
+      'label': 'Bosh sahifa',
+    },
+    {'icon': IconlyLight.video, 'activeIcon': IconlyBold.video, 'label': 'TV'},
+    {
+      'icon': IconlyLight.category,
+      'activeIcon': IconlyBold.category,
+      'label': 'Katalog',
+    },
+    {
+      'icon': IconlyLight.heart,
+      'activeIcon': IconlyBold.heart,
+      'label': 'Sevimlilar',
+    },
+    {
+      'icon': IconlyLight.profile,
+      'activeIcon': IconlyBold.profile,
+      'label': 'Profil',
+    },
+  ];
+
+  late AnimationController _glowController;
+  late FocusNode _sidebarFocusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _glowController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    )..repeat(reverse: true);
+
+    _sidebarFocusNode = FocusNode();
+    // Ilova ochilganda sidebar fokusda bo‘lsin
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _sidebarFocusNode.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _glowController.dispose();
+    _sidebarFocusNode.dispose();
+    super.dispose();
+  }
+
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      setState(() {
+        _selectedIndex = (_selectedIndex + 1) % _menuItems.length;
+      });
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      setState(() {
+        _selectedIndex =
+            (_selectedIndex - 1 + _menuItems.length) % _menuItems.length;
+      });
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight ||
+        event.logicalKey == LogicalKeyboardKey.select ||
+        event.logicalKey == LogicalKeyboardKey.enter) {
+      // Sahifaga o‘tish – fokusni ichki sahifaga berish mumkin
+      // Hozircha faqat tanlash yetarli
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF111827),
+      body: Row(
+        children: [
+          // Yon panel – TV pulti uchun moslashtirilgan
+          Focus(
+            focusNode: _sidebarFocusNode,
+            onKeyEvent: _handleKeyEvent,
+            child: Container(
+              width: 100,
+              color: const Color(0xFF1F2937),
+              child: Column(
+                children: List.generate(_menuItems.length, (index) {
+                  final item = _menuItems[index];
+                  final isSelected = _selectedIndex == index;
+
+                  return TweenAnimationBuilder<double>(
+                    duration: const Duration(milliseconds: 300),
+                    tween: Tween(begin: 0.0, end: isSelected ? 1.0 : 0.0),
+                    builder: (context, value, child) {
+                      return Transform.scale(
+                        scale: 1.0 + value * 0.1,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          margin: const EdgeInsets.symmetric(
+                            vertical: 8,
+                            horizontal: 12,
+                          ),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            gradient:
+                                isSelected
+                                    ? LinearGradient(
+                                      colors: [
+                                        Colors.cyanAccent.withOpacity(0.3),
+                                        Colors.cyanAccent.withOpacity(0.1),
+                                      ],
+                                    )
+                                    : null,
+                            border:
+                                isSelected
+                                    ? Border.all(
+                                      color: Colors.cyanAccent,
+                                      width: 2,
+                                    )
+                                    : null,
+                            boxShadow:
+                                isSelected
+                                    ? [
+                                      BoxShadow(
+                                        color: Colors.cyanAccent.withOpacity(
+                                          0.4 + _glowController.value * 0.3,
+                                        ),
+                                        blurRadius: 20,
+                                        spreadRadius: 5,
+                                      ),
+                                    ]
+                                    : [],
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              AnimatedBuilder(
+                                animation: _glowController,
+                                builder: (context, child) {
+                                  return Icon(
+                                    isSelected
+                                        ? item['activeIcon']
+                                        : item['icon'],
+                                    color:
+                                        isSelected
+                                            ? Colors.cyanAccent
+                                            : Colors.white70,
+                                    size: isSelected ? 32 : 28,
+                                  );
+                                },
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                item['label'],
+                                style: TextStyle(
+                                  color:
+                                      isSelected
+                                          ? Colors.white
+                                          : Colors.white70,
+                                  fontSize: isSelected ? 14 : 12,
+                                  fontWeight:
+                                      isSelected
+                                          ? FontWeight.w600
+                                          : FontWeight.normal,
+                                ),
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                }),
+              ),
+            ),
+          ),
+          // Asosiy kontent
+          Expanded(
+            child: FocusScope(
+              canRequestFocus: true,
+              child: IndexedStack(index: _selectedIndex, children: _screens),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

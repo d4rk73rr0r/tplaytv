@@ -1,0 +1,1631 @@
+import 'dart:async';
+import 'dart:ui';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+//import 'package:intl/intl.dart';
+import 'package:tplaytv/services/api_service.dart';
+import 'package:tplaytv/main.dart';
+//import 'package:shared_preferences/shared_preferences.dart';
+import 'phone_number_formatter.dart';
+import 'package:tplaytv/utils/navigation.dart';
+
+// ADDED imports:
+import 'qr_screen.dart';
+
+class AuthScreen extends StatefulWidget {
+  const AuthScreen({super.key});
+
+  @override
+  State<AuthScreen> createState() => _AuthScreenState();
+}
+
+class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
+  final _phoneController = TextEditingController();
+  final List<TextEditingController> _codeControllers = List.generate(
+    4,
+    (_) => TextEditingController(),
+  );
+
+  final FocusNode _phoneFocusNode = FocusNode();
+  final FocusNode _submitFocusNode = FocusNode();
+  final FocusNode _switchAuthModeFocusNode = FocusNode();
+  final List<FocusNode> _codeFocusNodes = List.generate(4, (_) => FocusNode());
+  final FocusNode _phoneRawKeyFocusNode = FocusNode(canRequestFocus: false);
+  final FocusNode _codeRawKeyFocusNode = FocusNode();
+
+  // Root focus node for the top-level RawKeyboardListener (avoid creating it inline)
+  final FocusNode _rootFocusNode = FocusNode();
+
+  bool _isLoginMode = true;
+  bool _isCodeSent = false;
+  bool _isLoading = false;
+  String? _error;
+  int _remainingSeconds = 60;
+  Timer? _timer;
+  bool _canResend = false;
+
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
+
+  // Back button state
+  int _backPressCount = 0;
+  Timer? _backPressTimer;
+
+  // Last back event timestamp to debounce duplicate events
+  DateTime? _lastBackPressTime;
+
+  // Error auto-clear timer
+  Timer? _errorTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _fadeController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeInOut,
+    );
+    _fadeController.forward();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        FocusScope.of(context).requestFocus(_submitFocusNode);
+      }
+    });
+
+    _phoneFocusNode.addListener(_onPhoneFieldFocusChanged);
+    _addFocusListeners();
+    _startTimerIfNeeded();
+  }
+
+  void _handleBackPress() {
+    // Debounce duplicate events (some devices / system combinations may fire both
+    // RawKeyboardListener and WillPopScope for the same physical press).
+    final now = DateTime.now();
+    if (_lastBackPressTime != null &&
+        now.difference(_lastBackPressTime!) <
+            const Duration(milliseconds: 500)) {
+      // Ignore as duplicate of the same physical press
+      return;
+    }
+    _lastBackPressTime = now;
+
+    if (_backPressCount == 0) {
+      setState(() {
+        _backPressCount = 1;
+      });
+
+      _backPressTimer?.cancel();
+      _backPressTimer = Timer(const Duration(seconds: 3), () {
+        if (mounted) {
+          setState(() {
+            _backPressCount = 0;
+          });
+        }
+      });
+    } else if (_backPressCount == 1) {
+      _backPressTimer?.cancel();
+      SystemNavigator.pop(); // Android TV / Fire TV uchun ishlaydi
+      // Agar ishlamasa: exit(0); ishlatishingiz mumkin
+    }
+  }
+
+  void _onPhoneFieldFocusChanged() {
+    if (_phoneFocusNode.hasFocus && mounted) {
+      Future.delayed(const Duration(milliseconds: 120), () {
+        if (mounted && _phoneFocusNode.hasFocus) {
+          SystemChannels.textInput.invokeMethod('TextInput.show');
+        }
+      });
+    }
+    setState(() {});
+  }
+
+  void _addFocusListeners() {
+    final focusNodes = [
+      _submitFocusNode,
+      _switchAuthModeFocusNode,
+      ..._codeFocusNodes,
+      // only nodes that remain are added here
+    ];
+    for (var node in focusNodes) {
+      node.addListener(() => setState(() {}));
+    }
+  }
+
+  void _startTimerIfNeeded() {
+    if (_isCodeSent) _startTimer();
+  }
+
+  void _startTimer() {
+    _remainingSeconds = 60;
+    _canResend = false;
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_remainingSeconds > 0) {
+        setState(() => _remainingSeconds--);
+      } else {
+        timer.cancel();
+        if (!mounted) return;
+        setState(() {
+          _canResend = true;
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            FocusScope.of(context).requestFocus(_submitFocusNode);
+          }
+        });
+      }
+    });
+  }
+
+  bool _isPhoneValid() {
+    final rawPhone = _phoneController.text.replaceAll(RegExp(r'[^0-9]'), '');
+    return rawPhone.length == 9;
+  }
+
+  bool _isFormValid() {
+    if (_isCodeSent) {
+      if (_canResend) return true;
+      return _codeControllers.every((c) => c.text.isNotEmpty);
+    } else {
+      // For both login and register modes we only require a valid phone.
+      return _isPhoneValid();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isSmallScreen = screenWidth < 1280;
+
+    return RawKeyboardListener(
+      focusNode: _rootFocusNode,
+      autofocus: true,
+      onKey: (RawKeyEvent event) {
+        if (event is RawKeyDownEvent &&
+            event.logicalKey == LogicalKeyboardKey.goBack) {
+          _handleBackPress();
+        }
+      },
+      child: WillPopScope(
+        onWillPop: () async {
+          _handleBackPress();
+          return false;
+        },
+        child: Scaffold(
+          body: Stack(
+            children: [
+              // Animated gradient background
+              AnimatedContainer(
+                duration: const Duration(seconds: 3),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFF1a1a2e),
+                      Color(0xFF16213e),
+                      Color(0xFF0f3460),
+                      Color(0xFF533483),
+                    ],
+                    stops: [0.0, 0.3, 0.6, 1.0],
+                  ),
+                ),
+              ),
+
+              // Animated circles
+              ...List.generate(3, (index) {
+                return Positioned(
+                  top: (screenHeight * 0.15) * index - 50,
+                  right: -(screenWidth * 0.08) * index,
+                  child: Container(
+                    width: isSmallScreen ? 200 : 300,
+                    height: isSmallScreen ? 200 : 300,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          Colors.purple.withOpacity(0.1),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }),
+
+              // Main content
+              FadeTransition(
+                opacity: _fadeAnimation,
+                child: SafeArea(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: screenWidth * 0.04,
+                      vertical: screenHeight * 0.03,
+                    ),
+                    child: _buildMainLayout(screenWidth, screenHeight),
+                  ),
+                ),
+              ),
+
+              // Back tugmasi ogohlantirish snackbari
+              if (_backPressCount == 1)
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Padding(
+                    padding: EdgeInsets.only(bottom: screenHeight * 0.08),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 36,
+                        vertical: 18,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.85),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: const Color(0xFFe94560),
+                          width: 2,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFFe94560).withOpacity(0.4),
+                            blurRadius: 20,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.exit_to_app,
+                            color: Color(0xFFe94560),
+                            size: 32,
+                          ),
+                          const SizedBox(width: 16),
+                          Text(
+                            "Ilovadan chiqish uchun yana bir marta ortga bosing",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: isSmallScreen ? 20 : 24,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMainLayout(double screenWidth, double screenHeight) {
+    final isSmallScreen = screenWidth < 1280;
+    final isMediumScreen = screenWidth >= 1280 && screenWidth < 1600;
+    final titleFontSize = isSmallScreen ? 26.0 : (isMediumScreen ? 30.0 : 34.0);
+    final subtitleFontSize =
+        isSmallScreen ? 16.0 : (isMediumScreen ? 18.0 : 20.0);
+    final inputFontSize = isSmallScreen ? 18.0 : (isMediumScreen ? 20.0 : 22.0);
+    final buttonFontSize =
+        isSmallScreen ? 18.0 : (isMediumScreen ? 20.0 : 22.0);
+    final hintFontSize = isSmallScreen ? 14.0 : (isMediumScreen ? 16.0 : 18.0);
+    final logoSize = isSmallScreen ? 90.0 : (isMediumScreen ? 120.0 : 150.0);
+    final iconSize = isSmallScreen ? 20.0 : (isMediumScreen ? 22.0 : 24.0);
+    final codeInputWidth =
+        isSmallScreen ? 70.0 : (isMediumScreen ? 80.0 : 90.0);
+    final codeInputPadding =
+        isSmallScreen ? 8.0 : (isMediumScreen ? 10.0 : 12.0);
+    final maxFormWidth =
+        isSmallScreen ? screenWidth * 0.85 : (isMediumScreen ? 600.0 : 700.0);
+    final useColumnLayout = !_isLoginMode && isSmallScreen;
+
+    return useColumnLayout
+        ? _buildColumnLayout(
+          titleFontSize,
+          subtitleFontSize,
+          inputFontSize,
+          buttonFontSize,
+          hintFontSize,
+          logoSize,
+          iconSize,
+          codeInputWidth,
+          codeInputPadding,
+          maxFormWidth,
+          screenWidth,
+          screenHeight,
+        )
+        : _buildRowLayout(
+          titleFontSize,
+          subtitleFontSize,
+          inputFontSize,
+          buttonFontSize,
+          hintFontSize,
+          logoSize,
+          iconSize,
+          codeInputWidth,
+          codeInputPadding,
+          maxFormWidth,
+          screenWidth,
+          screenHeight,
+        );
+  }
+
+  Widget _buildRowLayout(
+    double titleFontSize,
+    double subtitleFontSize,
+    double inputFontSize,
+    double buttonFontSize,
+    double hintFontSize,
+    double logoSize,
+    double iconSize,
+    double codeInputWidth,
+    double codeInputPadding,
+    double maxFormWidth,
+    double screenWidth,
+    double screenHeight,
+  ) {
+    // For the requested 50/50 split: make both sides equal flex (1).
+    // Left side (logo + texts) centered both vertically and horizontally and uses ~50% width.
+    // Right side contains the form and occupies the other 50%.
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Left half: logo and texts centered
+        Expanded(
+          flex: 1, // 50%
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        const Color(0xFFe94560).withOpacity(0.35),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                  // Larger logo as requested
+                  child: _tryLoadAssetImageWidget(
+                    'assets/images/logo.png',
+                    height: logoSize,
+                  ),
+                ),
+                SizedBox(height: screenHeight * 0.03),
+                ShaderMask(
+                  shaderCallback:
+                      (bounds) => const LinearGradient(
+                        colors: [Color(0xFFe94560), Color(0xFFf72585)],
+                      ).createShader(bounds),
+                  child: Text(
+                    _isCodeSent ? "Tasdiqlash" : "Xush kelibsiz",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: titleFontSize,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                SizedBox(height: screenHeight * 0.01),
+                Text(
+                  _isCodeSent
+                      ? "SMS kodni kiriting"
+                      : (_isLoginMode ? "Hisobga kirish" : "Ro'yxatdan o'tish"),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: subtitleFontSize,
+                    color: Colors.white.withOpacity(0.6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        // Right half: form container (qobiq) and inputs/buttons
+        Expanded(
+          flex: 1, // 50%
+          child: Center(
+            child: Container(
+              constraints: BoxConstraints(maxWidth: maxFormWidth),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(24),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.white.withOpacity(0.1),
+                    Colors.white.withOpacity(0.05),
+                  ],
+                ),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.2),
+                  width: 1.5,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.3),
+                    blurRadius: 30,
+                    offset: const Offset(0, 15),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                  child: Padding(
+                    padding: EdgeInsets.all(screenWidth * 0.025),
+                    child: _buildFormContent(
+                      inputFontSize,
+                      buttonFontSize,
+                      hintFontSize,
+                      iconSize,
+                      codeInputWidth,
+                      codeInputPadding,
+                      screenWidth,
+                      screenHeight,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildColumnLayout(
+    double titleFontSize,
+    double subtitleFontSize,
+    double inputFontSize,
+    double buttonFontSize,
+    double hintFontSize,
+    double logoSize,
+    double iconSize,
+    double codeInputWidth,
+    double codeInputPadding,
+    double maxFormWidth,
+    double screenWidth,
+    double screenHeight,
+  ) {
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Logo section - top
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      const Color(0xFFe94560).withOpacity(0.3),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+                child: _tryLoadAssetImageWidget(
+                  'assets/images/logo.png',
+                  height: logoSize * 0.9,
+                ),
+              ),
+              SizedBox(width: screenWidth * 0.02),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ShaderMask(
+                    shaderCallback:
+                        (bounds) => const LinearGradient(
+                          colors: [Color(0xFFe94560), Color(0xFFf72585)],
+                        ).createShader(bounds),
+                    child: Text(
+                      _isCodeSent ? "Tasdiqlash" : "Xush kelibsiz",
+                      style: TextStyle(
+                        fontSize: titleFontSize * 0.9,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    _isCodeSent ? "SMS kodni kiriting" : "Ro'yxatdan o'tish",
+                    style: TextStyle(
+                      fontSize: subtitleFontSize * 0.9,
+                      color: Colors.white.withOpacity(0.6),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          SizedBox(height: screenHeight * 0.03),
+          // Form section
+          Container(
+            constraints: BoxConstraints(maxWidth: maxFormWidth),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white.withOpacity(0.1),
+                  Colors.white.withOpacity(0.05),
+                ],
+              ),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.2),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 30,
+                  offset: const Offset(0, 15),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Padding(
+                  padding: EdgeInsets.all(screenWidth * 0.025),
+                  child: _buildFormContent(
+                    inputFontSize,
+                    buttonFontSize,
+                    hintFontSize,
+                    iconSize,
+                    codeInputWidth,
+                    codeInputPadding,
+                    screenWidth,
+                    screenHeight,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFormContent(
+    double inputFontSize,
+    double buttonFontSize,
+    double hintFontSize,
+    double iconSize,
+    double codeInputWidth,
+    double codeInputPadding,
+    double screenWidth,
+    double screenHeight,
+  ) {
+    final spacing = screenHeight * 0.02;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (_isCodeSent)
+          _buildCodeInputFields(codeInputWidth, codeInputPadding, inputFontSize)
+        else
+          _buildPhoneField(inputFontSize, hintFontSize, iconSize),
+        if (_error != null) ...[
+          SizedBox(height: spacing),
+          Container(
+            padding: EdgeInsets.all(screenWidth * 0.012),
+            decoration: BoxDecoration(
+              color: Colors.red.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.red.withOpacity(0.5)),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.error_outline,
+                  color: Colors.redAccent,
+                  size: iconSize,
+                ),
+                SizedBox(width: screenWidth * 0.01),
+                Expanded(
+                  child: Text(
+                    _error!,
+                    style: TextStyle(
+                      color: Colors.redAccent,
+                      fontSize: hintFontSize,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        SizedBox(height: spacing * 1.2),
+        // Primary action
+        _buildGradientButton(buttonFontSize, iconSize, screenWidth),
+        SizedBox(height: spacing * 0.8),
+        // Switch between Login/Register (only when not in code flow)
+        if (!_isCodeSent) _buildSwitchButton(buttonFontSize, screenWidth),
+        // NEW: QR auth button (only when not in code flow)
+        if (!_isCodeSent)
+          Padding(
+            padding: EdgeInsets.only(top: spacing * 0.6),
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const QrAuthScreen()),
+                );
+              },
+              icon: const Icon(Icons.qr_code),
+              label: const Text('QR orqali kirish'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                side: BorderSide(color: Colors.white.withOpacity(0.18)),
+                padding: EdgeInsets.symmetric(
+                  horizontal: screenWidth * 0.04,
+                  vertical: screenWidth * 0.012,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildGradientButton(
+    double fontSize,
+    double iconSize,
+    double screenWidth,
+  ) {
+    return Focus(
+      focusNode: _submitFocusNode,
+      canRequestFocus: true,
+      onFocusChange: (hasFocus) => setState(() {}),
+      onKey: (node, event) {
+        if (event is RawKeyDownEvent &&
+            event.logicalKey == LogicalKeyboardKey.select &&
+            !_isLoading) {
+          // Use wrapper so we can show snackbar when phone is missing
+          _onPrimaryPressed();
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient:
+              _submitFocusNode.hasFocus
+                  ? const LinearGradient(
+                    colors: [Color(0xFFf72585), Color(0xFFe94560)],
+                  )
+                  : null,
+          boxShadow:
+              _submitFocusNode.hasFocus
+                  ? [
+                    BoxShadow(
+                      color: const Color(0xFFe94560).withOpacity(0.6),
+                      blurRadius: 20,
+                      spreadRadius: 2,
+                    ),
+                  ]
+                  : [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.3),
+                      blurRadius: 10,
+                    ),
+                  ],
+          border:
+              _submitFocusNode.hasFocus
+                  ? Border.all(color: Colors.white.withOpacity(0.5), width: 2)
+                  : null,
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            // Prevent platform's default bright focus/splash
+            splashColor: Colors.transparent,
+            highlightColor: Colors.transparent,
+            hoverColor: Colors.transparent,
+            focusColor: Colors.transparent,
+            onTap: !_isLoading ? _onPrimaryPressed : null,
+            child: Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: screenWidth * 0.03,
+                vertical: screenWidth * 0.012,
+              ),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                gradient:
+                    !_submitFocusNode.hasFocus
+                        ? LinearGradient(
+                          colors: [
+                            const Color(0xFFe94560).withOpacity(0.8),
+                            const Color(0xFFf72585).withOpacity(0.8),
+                          ],
+                        )
+                        : null,
+              ),
+              child:
+                  _isLoading
+                      ? SizedBox(
+                        width: iconSize,
+                        height: iconSize,
+                        child: const CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Colors.white,
+                        ),
+                      )
+                      : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            _getPrimaryIcon(),
+                            color: Colors.white,
+                            size: iconSize,
+                          ),
+                          SizedBox(width: screenWidth * 0.01),
+                          Text(
+                            _buildPrimaryButtonText(),
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: fontSize,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // New helper that shows a SnackBar when phone is missing
+  void _showPhoneRequiredSnackBar() {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Telefon raqamni kiriting"),
+        duration: Duration(seconds: 3),
+      ),
+    );
+  }
+
+  // Wrapper used for both tap and select key on primary button
+  void _onPrimaryPressed() {
+    if (_isLoading) return;
+    if (!_isFormValid()) {
+      // show snackbar and focus phone field
+      _showPhoneRequiredSnackBar();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          FocusScope.of(context).requestFocus(_phoneFocusNode);
+          SystemChannels.textInput.invokeMethod('TextInput.show');
+        }
+      });
+      return;
+    }
+    // form valid -> proceed
+    _handleAction();
+  }
+
+  IconData _getPrimaryIcon() {
+    if (_isCodeSent) {
+      if (_canResend) return Icons.refresh;
+      return Icons.check_circle_outline;
+    }
+    return Icons.arrow_forward;
+  }
+
+  String _buildPrimaryButtonText() {
+    if (_isCodeSent) {
+      if (!_canResend) {
+        return "Tasdiqlash ($_remainingSeconds)";
+      } else {
+        return "Qayta yuborish";
+      }
+    } else {
+      return "Davom etish";
+    }
+  }
+
+  Widget _buildSwitchButton(double fontSize, double screenWidth) {
+    return Focus(
+      focusNode: _switchAuthModeFocusNode,
+      onFocusChange: (hasFocus) => setState(() {}),
+      onKey: (node, event) {
+        if (event is RawKeyDownEvent &&
+            event.logicalKey == LogicalKeyboardKey.select &&
+            !_isLoading) {
+          setState(() {
+            _isLoginMode = !_isLoginMode;
+            _resetFields();
+          });
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color:
+                _switchAuthModeFocusNode.hasFocus
+                    ? Colors.white.withOpacity(0.5)
+                    : Colors.white.withOpacity(0.2),
+            width: 2,
+          ),
+          boxShadow:
+              _switchAuthModeFocusNode.hasFocus
+                  ? [
+                    BoxShadow(
+                      color: Colors.white.withOpacity(0.2),
+                      blurRadius: 15,
+                    ),
+                  ]
+                  : null,
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            // prevent default bright focus overlay
+            splashColor: Colors.transparent,
+            highlightColor: Colors.transparent,
+            hoverColor: Colors.transparent,
+            focusColor: Colors.transparent,
+            onTap:
+                _isLoading
+                    ? null
+                    : () => setState(() {
+                      _isLoginMode = !_isLoginMode;
+                      _resetFields();
+                    }),
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: screenWidth * 0.025,
+                vertical: screenWidth * 0.01,
+              ),
+              child: Text(
+                _isLoginMode ? "Ro'yxatdan o'tish" : "Kirish",
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.9),
+                  fontSize: fontSize * 0.9,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPhoneField(
+    double fontSize,
+    double hintFontSize,
+    double iconSize,
+  ) {
+    return RawKeyboardListener(
+      focusNode: _phoneRawKeyFocusNode,
+      onKey: (RawKeyEvent event) {
+        if (event is! RawKeyDownEvent) return;
+        final key = event.logicalKey;
+        if (key == LogicalKeyboardKey.goBack) {
+          SystemChannels.textInput.invokeMethod('TextInput.hide');
+          final rawPhone = _phoneController.text.replaceAll(
+            RegExp(r'[^0-9]'),
+            '',
+          );
+          if (rawPhone.isEmpty && mounted) {
+            FocusScope.of(context).requestFocus(_submitFocusNode);
+          }
+        }
+        if (key == LogicalKeyboardKey.select) {
+          SystemChannels.textInput.invokeMethod('TextInput.show');
+        }
+        if (key == LogicalKeyboardKey.arrowDown) {
+          final nextFocus = _submitFocusNode;
+          FocusScope.of(context).requestFocus(nextFocus);
+        }
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient: LinearGradient(
+            colors: [
+              Colors.white.withOpacity(0.1),
+              Colors.white.withOpacity(0.05),
+            ],
+          ),
+          border: Border.all(
+            color:
+                _phoneFocusNode.hasFocus
+                    ? const Color(0xFFe94560)
+                    : Colors.white.withOpacity(0.2),
+            width: 2,
+          ),
+          boxShadow:
+              _phoneFocusNode.hasFocus
+                  ? [
+                    BoxShadow(
+                      color: const Color(0xFFe94560).withOpacity(0.3),
+                      blurRadius: 15,
+                    ),
+                  ]
+                  : null,
+        ),
+        child: TextField(
+          focusNode: _phoneFocusNode,
+          controller: _phoneController,
+          decoration: InputDecoration(
+            prefixIcon: Container(
+              margin: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFe94560).withOpacity(0.2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                Icons.phone_android,
+                color: const Color(0xFFe94560),
+                size: iconSize,
+              ),
+            ),
+            prefixText: "+998 ",
+            prefixStyle: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+              fontSize: fontSize,
+            ),
+            hintText: "XX XXX XX XX",
+            hintStyle: TextStyle(
+              color: Colors.white.withOpacity(0.3),
+              fontSize: fontSize,
+            ),
+            border: InputBorder.none,
+            contentPadding: EdgeInsets.symmetric(
+              vertical: MediaQuery.of(context).size.height * 0.018,
+              horizontal: MediaQuery.of(context).size.width * 0.012,
+            ),
+          ),
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: fontSize,
+            letterSpacing: 1,
+          ),
+          keyboardType: TextInputType.number,
+          inputFormatters: [PhoneNumberFormatter()],
+          enabled: !_isLoading,
+          onChanged: (_) => setState(() {}),
+          onEditingComplete: () {
+            if (_isPhoneValid()) {
+              FocusScope.of(context).requestFocus(_submitFocusNode);
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCodeInputFields(double width, double padding, double fontSize) {
+    return RawKeyboardListener(
+      focusNode: _codeRawKeyFocusNode,
+      onKey: (RawKeyEvent event) {
+        if (event is RawKeyDownEvent) {
+          final key = event.logicalKey;
+
+          // Handle remote Back button: return to phone input
+          if (key == LogicalKeyboardKey.goBack) {
+            // Cancel code flow and return to phone input
+            setState(() {
+              _isCodeSent = false;
+              _canResend = false;
+              _remainingSeconds = 60;
+              _timer?.cancel();
+              for (var c in _codeControllers) {
+                c.clear();
+              }
+            });
+            // Move focus to phone field and show keyboard
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                FocusScope.of(context).requestFocus(_phoneFocusNode);
+                SystemChannels.textInput.invokeMethod('TextInput.show');
+              }
+            });
+            return;
+          }
+
+          final currentFocusIndex = _codeFocusNodes.indexWhere(
+            (node) => node.hasFocus,
+          );
+          if (currentFocusIndex == -1) return;
+          if (key == LogicalKeyboardKey.backspace &&
+              _codeControllers[currentFocusIndex].text.isEmpty &&
+              currentFocusIndex > 0) {
+            FocusScope.of(
+              context,
+            ).requestFocus(_codeFocusNodes[currentFocusIndex - 1]);
+          } else if (key == LogicalKeyboardKey.arrowLeft &&
+              currentFocusIndex > 0) {
+            FocusScope.of(
+              context,
+            ).requestFocus(_codeFocusNodes[currentFocusIndex - 1]);
+          } else if (key == LogicalKeyboardKey.arrowRight &&
+              currentFocusIndex < 3) {
+            FocusScope.of(
+              context,
+            ).requestFocus(_codeFocusNodes[currentFocusIndex + 1]);
+          }
+        }
+      },
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: List.generate(4, (index) {
+          return Padding(
+            padding: EdgeInsets.symmetric(horizontal: padding),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: width,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.white.withOpacity(0.1),
+                    Colors.white.withOpacity(0.05),
+                  ],
+                ),
+                border: Border.all(
+                  color:
+                      _codeFocusNodes[index].hasFocus
+                          ? const Color(0xFFe94560)
+                          : Colors.white.withOpacity(0.2),
+                  width: 2,
+                ),
+                boxShadow:
+                    _codeFocusNodes[index].hasFocus
+                        ? [
+                          BoxShadow(
+                            color: const Color(0xFFe94560).withOpacity(0.3),
+                            blurRadius: 15,
+                          ),
+                        ]
+                        : null,
+              ),
+              child: TextField(
+                focusNode: _codeFocusNodes[index],
+                controller: _codeControllers[index],
+                decoration: InputDecoration(
+                  border: InputBorder.none,
+                  counterText: "",
+                  contentPadding: EdgeInsets.symmetric(
+                    vertical: MediaQuery.of(context).size.height * 0.018,
+                  ),
+                ),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: fontSize * 1.2,
+                  fontWeight: FontWeight.bold,
+                ),
+                keyboardType: TextInputType.number,
+                textAlign: TextAlign.center,
+                maxLength: 1,
+                obscureText: true,
+                obscuringCharacter: '●',
+                enabled: !_isLoading,
+                onChanged: (value) {
+                  if (value.isNotEmpty && index < 3) {
+                    FocusScope.of(
+                      context,
+                    ).requestFocus(_codeFocusNodes[index + 1]);
+                  } else if (value.isEmpty && index > 0) {
+                    _codeControllers[index].clear();
+                    FocusScope.of(
+                      context,
+                    ).requestFocus(_codeFocusNodes[index - 1]);
+                  }
+                  if (index == 3 && value.isNotEmpty) {
+                    FocusScope.of(context).requestFocus(_submitFocusNode);
+                  }
+                  setState(() {});
+                },
+                onEditingComplete: () {
+                  if (index < 3 && _codeControllers[index].text.isNotEmpty) {
+                    FocusScope.of(
+                      context,
+                    ).requestFocus(_codeFocusNodes[index + 1]);
+                  } else if (index == 3 &&
+                      _codeControllers[index].text.isNotEmpty) {
+                    _confirmCode();
+                  }
+                },
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _tryLoadAssetImageWidget(String path, {double? height}) {
+    try {
+      return Image.asset(path, height: height);
+    } catch (e) {
+      debugPrint("Rasm yuklashda xatolik: $e");
+      return Container(
+        height: height,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            colors: [
+              const Color(0xFFe94560).withOpacity(0.3),
+              const Color(0xFFf72585).withOpacity(0.3),
+            ],
+          ),
+        ),
+        child: Center(
+          child: Icon(
+            Icons.tv,
+            size: height != null ? height * 0.8 : 50,
+            color: Colors.white,
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleAction() async {
+    if (_isCodeSent) {
+      // If resend allowed -> perform resend
+      if (_canResend) {
+        await _resendCode();
+      } else {
+        // confirm code
+        await _confirmCode();
+      }
+    } else {
+      await _sendPhone();
+    }
+  }
+
+  Future<void> _resendCode() async {
+    // Called when timer expired and user pressed "Qayta yuborish"
+    final rawPhone = _phoneController.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final phone = "998$rawPhone";
+    if (rawPhone.length != 9) {
+      setState(() => _error = "To'liq raqam kiriting");
+      _startErrorTimerAndFocusPhone();
+      return;
+    }
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    final result = await ApiService.sendPhone(phone);
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+    if (result) {
+      setState(() {
+        _canResend = false;
+        _remainingSeconds = 60;
+        _isCodeSent = true;
+      });
+      _startTimer();
+      // Focus first code field again
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          FocusScope.of(context).requestFocus(_codeFocusNodes[0]);
+          SystemChannels.textInput.invokeMethod('TextInput.show');
+        }
+      });
+    } else {
+      setState(() => _error = "SMS yuborishda xatolik yuz berdi");
+      _startErrorTimerAndFocusPhone();
+    }
+  }
+
+  Future<void> _sendPhone() async {
+    final rawPhone = _phoneController.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final phone = "998$rawPhone";
+    if (rawPhone.length != 9) {
+      setState(() => _error = "To'liq raqam kiriting");
+      _startErrorTimerAndFocusPhone();
+      return;
+    }
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    final result = await ApiService.sendPhone(phone);
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+    if (result) {
+      setState(() {
+        _isCodeSent = true;
+        _canResend = false;
+      });
+      _startTimer();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          FocusScope.of(context).requestFocus(_codeFocusNodes[0]);
+          SystemChannels.textInput.invokeMethod('TextInput.show');
+        }
+      });
+    } else {
+      // Show error and return focus to phone input so user can edit
+      setState(() => _error = "SMS yuborishda xatolik yuz berdi");
+      _startErrorTimerAndFocusPhone();
+    }
+  }
+
+  /// Starts the error auto-clear timer and focuses the phone field+shows keyboard.
+  void _startErrorTimerAndFocusPhone() {
+    // cancel previous timer if any
+    _errorTimer?.cancel();
+    // focus phone field and show keyboard after frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      FocusScope.of(context).requestFocus(_phoneFocusNode);
+      SystemChannels.textInput.invokeMethod('TextInput.show');
+    });
+    // auto clear error after 5 seconds
+    _errorTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted) {
+        setState(() {
+          _error = null;
+        });
+      }
+    });
+  }
+
+  Future<void> _confirmCode() async {
+    final code = _codeControllers.map((c) => c.text).join();
+    if (code.length != 4) {
+      setState(() => _error = "To'liq kod kiriting");
+      return;
+    }
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    final result = await ApiService.confirmSms(code);
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+    if (result['success']) {
+      // Regardless of current mode (login/register) we navigate to main screen.
+      // User can complete profile later in app settings.
+      _navigateToMainScreen();
+    } else if (result.containsKey('devices')) {
+      _showDeviceSelectionDialog(result['devices']);
+    } else {
+      setState(() => _error = result['message'] ?? "Kod tasdiqlashda xatolik");
+    }
+  }
+
+  Future<void> _showDeviceSelectionDialog(List<dynamic> devices) async {
+    // Show dialog with a local StatefulBuilder so we can track which tile is focused
+    // and render a subtle translucent fill + red outline when focused (like 02.jpg).
+    return showDialog(
+      context: context,
+      builder: (context) {
+        int? focusedIndex;
+        return Theme(
+          // keep global splash/hover overlays off so platform bright highlights don't appear,
+          // but we'll draw our own focus visuals below.
+          data: Theme.of(context).copyWith(
+            splashFactory: NoSplash.splashFactory,
+            highlightColor: Colors.transparent,
+            hoverColor: Colors.transparent,
+            focusColor: Colors.transparent,
+          ),
+          child: StatefulBuilder(
+            builder: (context, sbSetState) {
+              return AlertDialog(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                backgroundColor: Colors.black,
+                title: const Text(
+                  "Bir nechta qurilma topildi",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                content: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Bitta qurilmani o‘chirib, davom eting:",
+                        style: TextStyle(color: Colors.white70),
+                      ),
+                      const SizedBox(height: 10),
+                      ...devices.asMap().entries.map((entry) {
+                        final i = entry.key;
+                        final device = entry.value;
+                        final deviceId = device['id']?.toString() ?? "ID yo‘q";
+
+                        // Common remove handler (updates outer State)
+                        Future<void> _removeAndConfirm() async {
+                          Navigator.pop(context);
+                          setState(() => _isLoading = true);
+
+                          debugPrint("O‘chirilayotgan qurilma ID: $deviceId");
+                          final confirmResult = await ApiService.confirmSms(
+                            _codeControllers.map((c) => c.text).join(),
+                            tokenId: deviceId,
+                          );
+                          debugPrint("confirmSms result: $confirmResult");
+
+                          if (!mounted) return;
+                          setState(() => _isLoading = false);
+
+                          if (confirmResult['success']) {
+                            if (_isLoginMode) {
+                              _navigateToMainScreen();
+                            } else {
+                              await _registerUser();
+                            }
+                          } else {
+                            setState(() {
+                              _error =
+                                  confirmResult['message'] ??
+                                  "Qurilma o‘chirishda xatolik";
+                            });
+                          }
+                        }
+
+                        // Each tile is wrapped in Focus so we control exactly how focused
+                        // state looks. Use autofocus on first tile so D‑Pad lands there.
+                        return Focus(
+                          autofocus: i == 0,
+                          canRequestFocus: true,
+                          onKey: (node, event) {
+                            if (event is RawKeyDownEvent &&
+                                (event.logicalKey ==
+                                        LogicalKeyboardKey.select ||
+                                    event.logicalKey ==
+                                        LogicalKeyboardKey.enter ||
+                                    event.logicalKey ==
+                                        LogicalKeyboardKey.gameButtonA)) {
+                              // handle select/enter from remote
+                              _removeAndConfirm();
+                              return KeyEventResult.handled;
+                            }
+                            return KeyEventResult.ignored;
+                          },
+                          onFocusChange: (hasFocus) {
+                            // update local dialog state to re-render visuals
+                            sbSetState(() {
+                              focusedIndex =
+                                  hasFocus
+                                      ? i
+                                      : (focusedIndex == i
+                                          ? null
+                                          : focusedIndex);
+                            });
+                          },
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            decoration: BoxDecoration(
+                              // translucent fill when focused (02.jpg style)
+                              color:
+                                  focusedIndex == i
+                                      ? Colors.white.withOpacity(0.04)
+                                      : Colors.transparent,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                // red/pink outline when focused so selection is very obvious
+                                color:
+                                    focusedIndex == i
+                                        ? const Color(0xFFe94560)
+                                        : Colors.white12,
+                                width: focusedIndex == i ? 2.0 : 1.0,
+                              ),
+                              boxShadow:
+                                  focusedIndex == i
+                                      ? [
+                                        // subtle pink glow when focused (optional, can be removed)
+                                        BoxShadow(
+                                          color: const Color(
+                                            0xFFe94560,
+                                          ).withOpacity(0.08),
+                                          blurRadius: 12,
+                                          spreadRadius: 1,
+                                        ),
+                                      ]
+                                      : null,
+                            ),
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 8,
+                                horizontal: 12,
+                              ),
+                              leading: const Icon(
+                                Icons.devices,
+                                color: Color(0xFFe94560),
+                              ),
+                              title: Text(
+                                device['device_name'] ?? "Noma'lum qurilma",
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    "Qurilma ID: $deviceId",
+                                    style: const TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  Text(
+                                    "Kirish vaqti: ${_formatDateTime(device['created_at'])}",
+                                    style: const TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  Text(
+                                    "IP: ${device['user_ip'] ?? 'Noma\'lum'}",
+                                    style: const TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              // D‑Pad/tap triggers same handler
+                              onTap: _removeAndConfirm,
+                              trailing: IconButton(
+                                icon: const Icon(
+                                  Icons.delete,
+                                  color: Colors.red,
+                                  size: 24,
+                                ),
+                                onPressed: _removeAndConfirm,
+                                tooltip: "O'chirish",
+                                splashRadius: 20,
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: ButtonStyle(
+                      overlayColor: MaterialStateProperty.all(
+                        Colors.transparent,
+                      ),
+                      splashFactory: NoSplash.splashFactory,
+                    ),
+                    child: const Text(
+                      "Bekor qilish",
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  /// Formats various possible datetime representations into a readable string.
+  /// If parsing fails, returns the original value's toString().
+  String _formatDateTime(dynamic value) {
+    if (value == null) return "-";
+    try {
+      DateTime dt;
+      if (value is int) {
+        // assume unix timestamp (seconds)
+        dt = DateTime.fromMillisecondsSinceEpoch(value * 1000);
+      } else if (value is String) {
+        dt = DateTime.parse(value);
+      } else if (value is DateTime) {
+        dt = value;
+      } else {
+        dt = DateTime.parse(value.toString());
+      }
+      String two(int n) => n.toString().padLeft(2, '0');
+      return "${dt.year}-${two(dt.month)}-${two(dt.day)} ${two(dt.hour)}:${two(dt.minute)}";
+    } catch (e) {
+      return value.toString();
+    }
+  }
+
+  /// Placeholder registration flow - replace with your actual registration call.
+  Future<void> _registerUser() async {
+    // If you have a real register endpoint, call it here.
+    // For now we just navigate to main screen after a short delay to keep UX smooth.
+    if (!mounted) return;
+    await Future.delayed(const Duration(milliseconds: 250));
+    _navigateToMainScreen();
+  }
+
+  void _navigateToMainScreen() {
+    Navigator.pushReplacement(context, createSlideRoute(const MainScreen()));
+  }
+
+  void _resetFields() {
+    _error = null;
+    _errorTimer?.cancel();
+    _phoneController.clear();
+    for (var c in _codeControllers) c.clear();
+    _isCodeSent = false;
+    _remainingSeconds = 60;
+    _canResend = false;
+    _timer?.cancel();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        FocusScope.of(context).requestFocus(_submitFocusNode);
+      }
+    });
+    setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _fadeController.dispose();
+    _phoneFocusNode.removeListener(_onPhoneFieldFocusChanged);
+    _backPressTimer?.cancel();
+
+    // Dispose all focus nodes including root
+    for (var node in [
+      _phoneFocusNode,
+      _submitFocusNode,
+      _switchAuthModeFocusNode,
+      ..._codeFocusNodes,
+      _phoneRawKeyFocusNode,
+      _codeRawKeyFocusNode,
+      _rootFocusNode,
+    ]) {
+      node.dispose();
+    }
+
+    _phoneController.dispose();
+    for (var c in _codeControllers) c.dispose();
+    _timer?.cancel();
+    _errorTimer?.cancel();
+    super.dispose();
+  }
+}

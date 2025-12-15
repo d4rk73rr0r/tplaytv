@@ -1,0 +1,819 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+
+class ApiService {
+  static const String baseUrl = "https://finalapi.riyaplay.uz";
+  static const Map<String, String> defaultHeaders = {
+    "Accept": "application/json",
+    "User-Agent": "okhttp/4.9.2",
+    "Content-Type": "application/json",
+  };
+
+  static Future<String> getCurrentDeviceName() async {
+    return await _getDeviceName();
+  }
+
+  static Future<dynamic> sendRequest({
+    required String url,
+    String method = 'GET',
+    Map<String, dynamic>? data,
+    Map<String, String>? headers,
+  }) async {
+    try {
+      final response =
+          method == 'POST'
+              ? await http.post(
+                Uri.parse(url),
+                headers: {...defaultHeaders, ...?headers},
+                body: jsonEncode(data),
+              )
+              : method == 'DELETE'
+              ? await http.delete(
+                Uri.parse(url),
+                headers: {...defaultHeaders, ...?headers},
+              )
+              : method == 'PUT'
+              ? await http.put(
+                Uri.parse(url),
+                headers: {...defaultHeaders, ...?headers},
+                body: jsonEncode(data),
+              )
+              : await http.get(
+                Uri.parse(url),
+                headers: {...defaultHeaders, ...?headers},
+              );
+
+      final decodedBody = utf8.decode(response.bodyBytes);
+      if (response.statusCode == 200 || response.statusCode == 202) {
+        final decodedJson = jsonDecode(decodedBody);
+        return decodedJson;
+      } else {
+        return {
+          "success": false,
+          "statusCode": response.statusCode,
+          "error": "Xatolik: ${response.statusCode}",
+        };
+      }
+    } catch (e) {
+      return {"success": false, "error": "Tarmoq xatosi: $e"};
+    }
+  }
+
+  static Future<String> _getDeviceName() async {
+    final deviceInfo = DeviceInfoPlugin();
+    if (Platform.isAndroid) {
+      final androidInfo = await deviceInfo.androidInfo;
+      return "${androidInfo.brand} ${androidInfo.model}";
+    } else if (Platform.isIOS) {
+      final iosInfo = await deviceInfo.iosInfo;
+      return iosInfo.utsname.machine;
+    }
+    return "Unknown Device";
+  }
+
+  static Future<bool> sendPhone(String phone) async {
+    const url = "$baseUrl/v2/user/login";
+    final deviceName = await _getDeviceName();
+    final data = {"phone": phone};
+    final headers = {"X-Device-Name": deviceName};
+
+    final response = await sendRequest(
+      url: url,
+      method: 'POST',
+      data: data,
+      headers: headers,
+    );
+
+    if (response is String && response == phone) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('phone', phone);
+      return true;
+    } else if (response is Map<String, dynamic> &&
+        response['success'] == true) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('phone', phone);
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+  static Future<Map<String, dynamic>> confirmSms(
+    String smsCode, {
+    String? tokenId,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final phone = prefs.getString('phone') ?? '';
+    final deviceName = await _getDeviceName();
+
+    if (phone.isEmpty) {
+      return {"success": false, "message": "Telefon raqami saqlanmagan"};
+    }
+
+    final url =
+        "$baseUrl/v2/user/confirm?include=token,files,banned.reason,lastSubscribe,subscribe,tokenId";
+    final data = {
+      "phone": phone,
+      "code": smsCode,
+      "device_name": deviceName,
+      if (tokenId != null) "token_id": tokenId,
+    };
+    final headers = {"X-Device-Name": deviceName};
+
+    final response = await sendRequest(
+      url: url,
+      method: 'POST',
+      data: data,
+      headers: headers,
+    );
+
+    if (response is List && response.isNotEmpty) {
+      // Barcha qurilmalarni qaytarish
+      return {"success": false, "devices": response};
+    } else if (response is Map<String, dynamic>) {
+      if (response.containsKey('token')) {
+        final tokenData = response['token'];
+        if (tokenData != null && tokenData['token'] != null) {
+          await prefs.setString('auth_token', tokenData['token']);
+          await prefs.setString('token_id', tokenData['id']?.toString() ?? '');
+          return {"success": true};
+        }
+      }
+      return {
+        "success": false,
+        "message": response['error'] ?? "Token topilmadi",
+      };
+    }
+
+    return {"success": false, "message": "Noto‘g‘ri javob formati"};
+  }
+
+  static Future<bool> kickDevice(String tokenId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final authToken = prefs.getString('auth_token') ?? '';
+    if (authToken.isEmpty) {
+      return false;
+    }
+    final url = "$baseUrl/v2/user/kick-device?token_id=$tokenId";
+
+    final response = await sendRequest(
+      url: url,
+      method: 'DELETE',
+      headers: {"Authorization": "Bearer $authToken"},
+    );
+
+    if (response is List) {
+      return true;
+    } else if (response is Map) {
+      return response['success'] != false;
+    }
+    return false;
+  }
+
+  static Future<bool> updateUser({
+    required String fullName,
+    required String username,
+    required int birthDate,
+    required int sex,
+    required String token,
+  }) async {
+    const url =
+        "$baseUrl/v2/user/update?include=token,files,banned.reason,lastSubscribe,subscribe,tokenId";
+    final deviceName = await _getDeviceName();
+    final data = {
+      "full_name": fullName,
+      "username": username,
+      "birth_date": birthDate,
+      "sex": sex,
+    };
+    final headers = {
+      "X-Device-Name": deviceName,
+      "Authorization": "Bearer $token",
+    };
+
+    final response = await sendRequest(
+      url: url,
+      method: 'PUT',
+      data: data,
+      headers: headers,
+    );
+
+    return response['success'] == true ||
+        (!response.containsKey('error') && response.isNotEmpty);
+  }
+
+  static Future<bool> addToFavorite(int filmId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final authToken = prefs.getString('auth_token') ?? '';
+    if (authToken.isEmpty) {
+      return false;
+    }
+
+    final url = "$baseUrl/v2/films/add-favorite?id=$filmId";
+    final deviceName = await _getDeviceName();
+
+    final response = await sendRequest(
+      url: url,
+      method: 'POST',
+      headers: {
+        "Authorization": "Bearer $authToken",
+        "X-Device-Name": deviceName,
+      },
+    );
+
+    return response is Map && response['id'] != null;
+  }
+
+  static Future<bool> removeFromFavorite(int filmId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final authToken = prefs.getString('auth_token') ?? '';
+    if (authToken.isEmpty) {
+      return false;
+    }
+
+    final url = "$baseUrl/v2/films/un-favorite?id=$filmId";
+    final deviceName = await _getDeviceName();
+
+    final response = await sendRequest(
+      url: url,
+      method: 'DELETE',
+      headers: {
+        "Authorization": "Bearer $authToken",
+        "X-Device-Name": deviceName,
+      },
+    );
+
+    return response is bool && response == true;
+  }
+
+  static Future<List<dynamic>> searchFilms(
+    String query,
+    int page,
+    String category,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    final authToken = prefs.getString('auth_token') ?? '';
+    if (authToken.isEmpty) {
+      return [];
+    }
+
+    String url =
+        "$baseUrl/v2/films/search?page=$page&include=files,paid,tags,genres,favorite,holder.logo&_l=uz&_q=${Uri.encodeComponent(query)}&sort=-updated_at";
+    if (category.isNotEmpty) url += "&filter[type]=$category";
+
+    final response = await sendRequest(
+      url: url,
+      headers: {"Authorization": "Bearer $authToken"},
+    );
+
+    return response['data'] ?? [];
+  }
+
+  static Future<Map<String, dynamic>> getFilmDetails(int filmId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final authToken = prefs.getString('auth_token') ?? '';
+    final url =
+        "$baseUrl/v2/films/$filmId?include=banner,season_count,episode_count,languages,files,tags,country,paid,actors.files,maker.files,thriller.poster,genres,favorite,lastSeries.track,lastSeries.ads,company,gallery,type,riyaRating";
+
+    final response = await sendRequest(
+      url: url,
+      headers: {"Authorization": "Bearer $authToken"},
+    );
+
+    if (response['success'] == false) {
+      throw Exception(response['error'] ?? "Film ma'lumotlari yuklanmadi");
+    }
+    return response;
+  }
+
+  static Future<List<dynamic>> getSeasons(int filmId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final authToken = prefs.getString('auth_token') ?? '';
+    final url = "$baseUrl/v2/films/seasons/$filmId?filter[status]=1";
+
+    final response = await http.get(
+      Uri.parse(url),
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $authToken',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      return json.decode(response.body) as List<dynamic>;
+    } else {
+      throw Exception("Failed to load seasons");
+    }
+  }
+
+  static Future<List<dynamic>> getEpisodes(
+    int filmId,
+    int seasonId, {
+    int page = 1,
+    int perPage = 20,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final authToken = prefs.getString('auth_token') ?? '';
+    final url =
+        "$baseUrl/v1/series?filter[film_id]=$filmId&filter[season_id]=$seasonId&filter[status]=1&include=files,track,ads,second,screenshots.file&page=$page&per-page=$perPage&fields=id,name_ru,name_uz,name_en,status,sort,duration,screenshots.id,screenshots.thumbnails,files.thumbnails,is_last_seen";
+
+    final response = await sendRequest(
+      url: url,
+      headers: {"Authorization": "Bearer $authToken"},
+    );
+
+    return response['data'] ?? [];
+  }
+
+  static Future<void> logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    final authToken = prefs.getString('auth_token') ?? '';
+    final tokenId = prefs.getString('token_id') ?? '';
+    final url = "$baseUrl/v2/user/kick-device?token_id=$tokenId";
+
+    await sendRequest(
+      url: url,
+      method: 'DELETE',
+      headers: {"Authorization": "Bearer $authToken"},
+    );
+    await prefs.clear();
+  }
+
+  static Future<Map<String, dynamic>> checkUrlValidity(String url) async {
+    try {
+      final response = await http.head(
+        Uri.parse(url),
+        headers: {"User-Agent": "okhttp/4.9.2"},
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 202) {
+        return {"isValid": true};
+      } else {
+        return {
+          "isValid": false,
+          "error": "URL ishlamayapti, status kod: ${response.statusCode}",
+        };
+      }
+    } catch (e) {
+      return {"isValid": false, "error": "Tarmoq xatosi: $e"};
+    }
+  }
+
+  static Future<List<dynamic>> getBanners() async {
+    final prefs = await SharedPreferences.getInstance();
+    final authToken = prefs.getString('auth_token') ?? '';
+    if (authToken.isEmpty) {
+      return [];
+    }
+
+    const url = "$baseUrl/v1/banners?_l=uz&sort=-id&include=files,film.company";
+
+    final response = await sendRequest(
+      url: url,
+      headers: {"Authorization": "Bearer $authToken"},
+    );
+
+    return response['data'] ?? [];
+  }
+
+  static Future<Map<String, dynamic>> getLatestViewed({
+    int page = 1,
+    int perPage = 20,
+    bool isAll = false,
+    String fields =
+        'name_uz,name_ru,name_en,id,films.id,films.name_uz,films.name_ru,films.publish_time,films.type,films.paid,films.year,films.tags.id,films.tags.title_uz,films.tags.title_en,films.files.thumbnails',
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final authToken = prefs.getString('auth_token') ?? '';
+    if (authToken.isEmpty) {
+      return {'data': [], '_meta': {}};
+    }
+
+    final queryParams = {
+      'include':
+          'series,files,film.paid,film.tags,film.files,film.genres,second,screenshots.file,season',
+      'filter[status]': '1',
+      'sort': '-id',
+      'fields': fields,
+      if (isAll) 'is_all': '1',
+      if (isAll) 'page': page.toString(),
+      if (isAll) 'per_page': perPage.toString(),
+      '_t':
+          DateTime.now().millisecondsSinceEpoch.toString(), // Dinamik parametr
+    };
+
+    final url =
+        Uri.parse(
+          '$baseUrl/v2/films/latest-viewed',
+        ).replace(queryParameters: queryParams).toString();
+
+    final response = await sendRequest(
+      url: url,
+      headers: {
+        "Authorization": "Bearer $authToken",
+        "X-Device-Name": await _getDeviceName(),
+        "Cache-Control": "no-cache",
+      },
+    );
+
+    if (response['success'] == false) {
+      throw Exception(response['error'] ?? "So‘ngi ko‘rilganlar yuklanmadi");
+    }
+
+    return {
+      'data': response['data'] ?? [],
+      '_meta':
+          response['_meta'] ??
+          {
+            'totalCount': 0,
+            'pageCount': 1,
+            'currentPage': page,
+            'perPage': perPage,
+          },
+    };
+  }
+
+  static Future<bool> removeFromLatestViewed(int filmId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final authToken = prefs.getString('auth_token') ?? '';
+    if (authToken.isEmpty) {
+      return false;
+    }
+
+    final url = "$baseUrl/v2/user/last-viewed/$filmId";
+    final deviceName = await _getDeviceName();
+
+    final response = await sendRequest(
+      url: url,
+      method: 'DELETE',
+      headers: {
+        "Authorization": "Bearer $authToken",
+        "X-Device-Name": deviceName,
+        "Cache-Control": "no-cache",
+      },
+    );
+
+    return response is Map && response['status'] == 1;
+  }
+
+  static Future<bool> clearLatestViewed() async {
+    final prefs = await SharedPreferences.getInstance();
+    final authToken = prefs.getString('auth_token') ?? '';
+    if (authToken.isEmpty) {
+      return false;
+    }
+
+    const url = "$baseUrl/v2/user/last-viewed";
+    final deviceName = await _getDeviceName();
+
+    final response = await sendRequest(
+      url: url,
+      method: 'DELETE',
+      headers: {
+        "Authorization": "Bearer $authToken",
+        "X-Device-Name": deviceName,
+        "Cache-Control": "no-cache",
+      },
+    );
+
+    return response is Map && response['status'] == 1;
+  }
+
+  static Future<Map<String, dynamic>> getWatchHistory({int page = 1}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final authToken = prefs.getString('auth_token') ?? '';
+    final deviceName = await _getDeviceName();
+
+    if (authToken.isEmpty) {
+      return {'data': [], 'meta': {}};
+    }
+
+    final url =
+        "$baseUrl/v2/user/watch-history?include=files&sort=-updated_at&page=$page";
+
+    final response = await sendRequest(
+      url: url,
+      headers: {
+        "Authorization": "Bearer $authToken",
+        "X-Device-Name": deviceName,
+        "Cache-Control": "no-cache",
+      },
+    );
+
+    if (response['success'] == false) {
+      throw Exception(response['error'] ?? "Ko'rishlar tarixi yuklanmadi");
+    }
+    return {'data': response['data'] ?? [], 'meta': response['_meta'] ?? {}};
+  }
+
+  static Future<Map<String, dynamic>> getRecommendedFilms({
+    int page = 1,
+    int perPage = 20,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final authToken = prefs.getString('auth_token') ?? '';
+    final deviceName = await _getDeviceName();
+
+    final url =
+        "$baseUrl/v2/films/recommended?include=files,tags,genres,holder.logo&sort=-id&filter[status]=1&page=$page&per-page=$perPage";
+
+    final response = await sendRequest(
+      url: url,
+      headers: {
+        "Authorization": "Bearer $authToken",
+        "X-Device-Name": deviceName,
+      },
+    );
+
+    return {'data': response['data'] ?? [], 'meta': response['_meta'] ?? {}};
+  }
+
+  static Future<List<dynamic>> getGenresPreview() async {
+    final prefs = await SharedPreferences.getInstance();
+    final authToken = prefs.getString('auth_token') ?? '';
+    final deviceName = await _getDeviceName();
+
+    final url =
+        "$baseUrl/v1/genres?filter[status]=1&per-page=30&sort=sort&include=photo";
+
+    final response = await sendRequest(
+      url: url,
+      headers: {
+        "Authorization": "Bearer $authToken",
+        "X-Device-Name": deviceName,
+      },
+    );
+
+    return response['data'] ?? [];
+  }
+
+  static Future<List<dynamic>> getAllGenres() async {
+    final prefs = await SharedPreferences.getInstance();
+    final authToken = prefs.getString('auth_token') ?? '';
+    final deviceName = await _getDeviceName();
+
+    final url =
+        "$baseUrl/v1/genres?include=photo&sort=sort&filter[status]=1&per-page=50";
+
+    final response = await sendRequest(
+      url: url,
+      headers: {
+        "Authorization": "Bearer $authToken",
+        "X-Device-Name": deviceName,
+      },
+    );
+
+    return response['data'] ?? [];
+  }
+
+  static Future<Map<String, dynamic>> getFilmsByGenre({
+    required int genreId,
+    int page = 1,
+    int perPage = 20,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final authToken = prefs.getString('auth_token') ?? '';
+    final deviceName = await _getDeviceName();
+
+    final url =
+        "$baseUrl/v2/films/by-genre/$genreId?filer[films.status]=1&include=files,paid,tags,genres,holder.logo&page=$page&per-page=$perPage&sort=-id";
+
+    final response = await sendRequest(
+      url: url,
+      headers: {
+        "Authorization": "Bearer $authToken",
+        "X-Device-Name": deviceName,
+      },
+    );
+
+    return {'data': response['data'] ?? [], '_meta': response['_meta'] ?? {}};
+  }
+
+  static Future<List<dynamic>> getFavorites({int page = 1}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final authToken = prefs.getString('auth_token') ?? '';
+    if (authToken.isEmpty) {
+      return [];
+    }
+
+    final url =
+        "$baseUrl/v2/films/favorite?include=files,paid,tags,genres,holder.logo&sort=-id&page=$page";
+
+    final response = await sendRequest(
+      url: url,
+      headers: {
+        "Authorization": "Bearer $authToken",
+        "X-Device-Name": await _getDeviceName(),
+      },
+    );
+
+    return response['data'] ?? [];
+  }
+
+  static Future<bool> clearAllFavorites() async {
+    final prefs = await SharedPreferences.getInstance();
+    final authToken = prefs.getString('auth_token') ?? '';
+    if (authToken.isEmpty) {
+      return false;
+    }
+
+    const url = "$baseUrl/v2/films/favorite";
+    final deviceName = await _getDeviceName();
+
+    final response = await sendRequest(
+      url: url,
+      method: 'DELETE',
+      headers: {
+        "Authorization": "Bearer $authToken",
+        "X-Device-Name": deviceName,
+      },
+    );
+
+    return response is bool && response == true;
+  }
+
+  static Future<Map<String, dynamic>> getCategories({
+    int page = 1,
+    int perPage = 20,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final authToken = prefs.getString('auth_token') ?? '';
+    final deviceName = await _getDeviceName();
+
+    if (authToken.isEmpty) {
+      return {'data': [], 'meta': {}};
+    }
+
+    final url =
+        "$baseUrl/v1/categories?filter[status]=1&include=films.files,films.tags,films.genres,&filter[show_in_home]=1&sort=-id&fields=id,title_uz,films.id,films.name_uz,films.type,films.year,films.tags.title_uz,films.files.thumbnails&page=$page&per-page=$perPage";
+
+    final response = await sendRequest(
+      url: url,
+      headers: {
+        "Authorization": "Bearer $authToken",
+        "X-Device-Name": deviceName,
+      },
+    );
+
+    return {'data': response['data'] ?? [], 'meta': response['meta'] ?? {}};
+  }
+
+  static Future<Map<String, dynamic>> getFilmsByCategory({
+    required int categoryId,
+    int page = 1,
+    int perPage = 20,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final authToken = prefs.getString('auth_token') ?? '';
+    final deviceName = await _getDeviceName();
+
+    if (authToken.isEmpty) {
+      return {'data': [], 'meta': {}};
+    }
+
+    final url =
+        "$baseUrl/v2/films/by-category/$categoryId?include=files,tags,genres&per-page=$perPage&sort=-id&page=$page&sort=-updated_at";
+
+    final response = await sendRequest(
+      url: url,
+      headers: {
+        "Authorization": "Bearer $authToken",
+        "X-Device-Name": deviceName,
+      },
+    );
+
+    return {'data': response['data'] ?? [], 'meta': response['meta'] ?? {}};
+  }
+
+  static Future<Map<String, dynamic>> getUserProfile() async {
+    final prefs = await SharedPreferences.getInstance();
+    final authToken = prefs.getString('auth_token') ?? '';
+    if (authToken.isEmpty) {
+      throw Exception("Token topilmadi!");
+    }
+
+    const url =
+        "$baseUrl/v2/user/get-me?include=token,files,subscribe,lastSubscribe,tokenId,banned.reason";
+
+    final response = await sendRequest(
+      url: url,
+      headers: {
+        "Authorization": "Bearer $authToken",
+        "X-Device-Name": await _getDeviceName(),
+      },
+    );
+
+    if (response['success'] == false) {
+      throw Exception(response['error'] ?? "Profil ma'lumotlari yuklanmadi");
+    }
+    return response;
+  }
+
+  static Future<String> getCurrentDeviceId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final tokenId = prefs.getString('token_id') ?? '';
+    if (tokenId.isEmpty) {
+      return '';
+    }
+    return tokenId;
+  }
+
+  static Future<List<dynamic>> getDevices() async {
+    final prefs = await SharedPreferences.getInstance();
+    final authToken = prefs.getString('auth_token') ?? '';
+    if (authToken.isEmpty) {
+      return [];
+    }
+
+    const url = "$baseUrl/v2/user/devices";
+    final deviceName = await _getDeviceName();
+
+    final response = await sendRequest(
+      url: url,
+      method: 'GET',
+      headers: {
+        "Authorization": "Bearer $authToken",
+        "X-Device-Name": deviceName,
+        "Cache-Control": "no-cache",
+      },
+    );
+
+    if (response is List) {
+      return response;
+    } else if (response['success'] == false) {
+      throw Exception(
+        response['error'] ?? "Qurilmalar ro'yxatini yuklashda xatolik",
+      );
+    }
+    return [];
+  }
+
+  static Future<dynamic> checkQR({
+    required String hash,
+    String? tokenId,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final authToken = prefs.getString('auth_token') ?? '';
+    if (authToken.isEmpty) {
+      return {"success": false, "error": "Auth token topilmadi"};
+    }
+
+    final deviceName = await _getDeviceName();
+    final queryParams = {
+      "hash": hash,
+      if (tokenId != null) "token_id": tokenId,
+    };
+    final url =
+        Uri.parse(
+          "$baseUrl/v2/user/check-qr",
+        ).replace(queryParameters: queryParams).toString();
+
+    final response = await sendRequest(
+      url: url,
+      method: 'POST',
+      headers: {
+        "Authorization": "Bearer $authToken",
+        "X-Device-Name": deviceName,
+        "Cache-Control": "no-cache",
+      },
+      data: {"hash": hash},
+    );
+
+    return response;
+  }
+
+  /// NEW: Register (or fetch) QR token by hash.
+  /// This endpoint is used by TV app to create a temporary token record (status 0)
+  /// and also to fetch its current status. The endpoint is GET /v2/user/qr?hash=...
+  static Future<dynamic> registerQr(
+    String hash, {
+    String? deviceName,
+    String lang = 'en',
+    String include =
+        'user.files,user.token,banned.reason,user.subscribe,user.lastSubscribe,user.tokenId',
+  }) async {
+    try {
+      final dn = deviceName ?? await _getDeviceName();
+      final queryParams = {
+        'hash': hash,
+        'include': include,
+        'device_name': dn,
+        '_l': lang,
+      };
+      final url =
+          Uri.parse(
+            '$baseUrl/v2/user/qr',
+          ).replace(queryParameters: queryParams).toString();
+
+      // This is a GET request per API examples
+      final response = await sendRequest(url: url, method: 'GET');
+
+      return response;
+    } catch (e) {
+      return {'success': false, 'error': 'Tarmoq xatosi: $e'};
+    }
+  }
+}

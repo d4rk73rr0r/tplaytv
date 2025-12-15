@@ -1,0 +1,237 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:tplaytv/screens/auth_screen.dart';
+import 'package:tplaytv/screens/index_screen.dart';
+import 'package:tplaytv/screens/tv_channels_screen.dart';
+import 'package:tplaytv/screens/catalog_screen.dart';
+import 'package:tplaytv/screens/favorites_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_iconly/flutter_iconly.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const RiyaPlayApp());
+}
+
+class RiyaPlayApp extends StatefulWidget {
+  const RiyaPlayApp({super.key});
+
+  @override
+  State<RiyaPlayApp> createState() => _RiyaPlayAppState();
+}
+
+class _RiyaPlayAppState extends State<RiyaPlayApp> {
+  Future<String?> _checkAuthToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('auth_token');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'TPlay TV',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        scaffoldBackgroundColor: const Color(0xFF111827),
+        primaryColor: Colors.cyan, // Android TV uchun selected rang
+        textTheme: GoogleFonts.poppinsTextTheme(
+          ThemeData.dark().textTheme.copyWith(
+            displayLarge: const TextStyle(fontSize: 24.0, color: Colors.white),
+            displayMedium: const TextStyle(fontSize: 20.0, color: Colors.white),
+            bodyLarge: const TextStyle(fontSize: 14.0, color: Colors.white),
+            bodyMedium: const TextStyle(fontSize: 12.0, color: Colors.white),
+            labelLarge: const TextStyle(fontSize: 14.0, color: Colors.white),
+          ),
+        ),
+        iconTheme: const IconThemeData(color: Colors.white, size: 28.0),
+        appBarTheme: AppBarTheme(
+          backgroundColor: const Color(0xFF111827),
+          titleTextStyle: GoogleFonts.poppins(
+            fontSize: 20,
+            fontWeight: FontWeight.w500,
+            color: Colors.white,
+          ),
+        ),
+      ),
+      builder: (context, child) {
+        final mq = MediaQuery.of(context);
+        return MediaQuery(
+          data: mq.copyWith(textScaleFactor: 1.0, boldText: false),
+          child: child!,
+        );
+      },
+      home: FutureBuilder<String?>(
+        future: _checkAuthToken(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              body: Center(
+                child: CircularProgressIndicator(color: Colors.cyan),
+              ),
+            );
+          }
+          if (snapshot.hasData && snapshot.data!.isNotEmpty) {
+            return const MainScreen();
+          }
+          return const AuthScreen();
+        },
+      ),
+    );
+  }
+}
+
+class MainScreen extends StatefulWidget {
+  const MainScreen({super.key});
+
+  @override
+  State<MainScreen> createState() => _MainScreenState();
+}
+
+class _MainScreenState extends State<MainScreen> {
+  int _selectedIndex = 0;
+
+  // Android TV pulti uchun focus boshqaruvi
+  final FocusNode _navRailFocusNode = FocusNode();
+  final FocusNode _contentFocusNode = FocusNode();
+
+  // Faqat ishlaydigan ekranlar (Profil hali yo'q → olib tashlandi)
+  final List<Widget> _screens = [
+    const IndexScreen(),
+    const TVChannelsScreen(),
+    const CatalogScreen(),
+    const FavoritesScreen(),
+  ];
+
+  // Menyu elementlari (Profil olib tashlandi → crash yo'q)
+  final List<_MenuItem> _menuItems = [
+    const _MenuItem(
+      icon: IconlyLight.home,
+      activeIcon: IconlyBold.home,
+      label: 'Bosh sahifa',
+    ),
+    const _MenuItem(
+      icon: IconlyLight.video,
+      activeIcon: IconlyBold.video,
+      label: 'TV',
+    ),
+    const _MenuItem(
+      icon: IconlyLight.category,
+      activeIcon: IconlyBold.category,
+      label: 'Katalog',
+    ),
+    const _MenuItem(
+      icon: IconlyLight.heart,
+      activeIcon: IconlyBold.heart,
+      label: 'Sevimlilar',
+    ),
+  ];
+
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+    // Tanlangan bo'lim ichiga focusni o'tkazamiz (pult bilan darhol ishlaydi)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _contentFocusNode.requestFocus();
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Ilova ochilganda nav rail darhol fokusda bo'ladi
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _navRailFocusNode.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _navRailFocusNode.dispose();
+    _contentFocusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: FocusTraversalGroup(
+        policy: ReadingOrderTraversalPolicy(),
+        child: Row(
+          children: [
+            // NavigationRail — Android TV uchun eng yaxshi pattern
+            Focus(
+              focusNode: _navRailFocusNode,
+              onKey: (node, event) {
+                if (event is RawKeyDownEvent) {
+                  if (event.logicalKey == LogicalKeyboardKey.select ||
+                      event.logicalKey == LogicalKeyboardKey.enter ||
+                      event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+                    _contentFocusNode.requestFocus();
+                    return KeyEventResult.handled;
+                  }
+                }
+                return KeyEventResult.ignored;
+              },
+              child: NavigationRail(
+                backgroundColor: const Color(0xFF1F2937),
+                selectedIndex: _selectedIndex,
+                onDestinationSelected: _onItemTapped,
+                labelType: NavigationRailLabelType.all,
+                selectedIconTheme: const IconThemeData(
+                  color: Colors.cyan,
+                  size: 32,
+                ),
+                selectedLabelTextStyle: const TextStyle(
+                  color: Colors.cyan,
+                  fontWeight: FontWeight.w600,
+                ),
+                unselectedLabelTextStyle: const TextStyle(
+                  color: Colors.white70,
+                ),
+                destinations:
+                    _menuItems.map((item) {
+                      return NavigationRailDestination(
+                        icon: Icon(item.icon, size: 28),
+                        selectedIcon: Icon(item.activeIcon, size: 32),
+                        label: Text(item.label),
+                      );
+                    }).toList(),
+              ),
+            ),
+
+            // Asosiy kontent
+            Expanded(
+              child: Focus(
+                focusNode: _contentFocusNode,
+                onKey: (node, event) {
+                  if (event is RawKeyDownEvent) {
+                    if (event.logicalKey == LogicalKeyboardKey.goBack ||
+                        event.logicalKey == LogicalKeyboardKey.escape) {
+                      _navRailFocusNode.requestFocus();
+                      return KeyEventResult.handled;
+                    }
+                  }
+                  return KeyEventResult.ignored;
+                },
+                child: IndexedStack(index: _selectedIndex, children: _screens),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MenuItem {
+  final IconData icon;
+  final IconData activeIcon;
+  final String label;
+  const _MenuItem({
+    required this.icon,
+    required this.activeIcon,
+    required this.label,
+  });
+}
