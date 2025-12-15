@@ -212,6 +212,8 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
   final GlobalKey _latestViewedKey = GlobalKey();
   final GlobalKey _recommendedKey = GlobalKey();
   final GlobalKey _genresKey = GlobalKey();
+  // Dynamic keys for category sections
+  final Map<int, GlobalKey> _categoryKeys = {};
 
   @override
   void initState() {
@@ -474,11 +476,16 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
       currentSection++;
     }
     
-    // For category sections, we don't have individual keys, so scroll to the first category
+    // For category sections, check if we have a key for this specific category
     if (provider.categories.isNotEmpty && 
         _selectedSectionIndex >= currentSection && 
         _selectedSectionIndex < currentSection + provider.categories.length) {
-      key = _genresKey; // Scroll to genres section as a reference point
+      final categoryIndex = _selectedSectionIndex - currentSection;
+      // Create key if it doesn't exist
+      if (!_categoryKeys.containsKey(categoryIndex)) {
+        _categoryKeys[categoryIndex] = GlobalKey();
+      }
+      key = _categoryKeys[categoryIndex];
     }
     
     if (key != null && key.currentContext != null) {
@@ -543,22 +550,17 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
       return KeyEventResult.handled;
     }
 
-    // Handle arrow left - move to previous item in section or show info
+    // Handle arrow left - move to previous item in section or let parent handle
     if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-      setState(() {
-        if (_selectedItemIndex > 0) {
+      if (_selectedItemIndex > 0) {
+        setState(() {
           _selectedItemIndex--;
-        } else {
-          // At the first item - show a message or open drawer if available
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Chap tomondagi menyuga qaytish uchun Back tugmasini bosing'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-      });
-      return KeyEventResult.handled;
+        });
+        return KeyEventResult.handled;
+      } else {
+        // At the first item - let parent handle to open sidebar menu
+        return KeyEventResult.ignored;
+      }
     }
 
     // Handle select/enter - activate selected item
@@ -804,6 +806,7 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
                   baseSectionIndex: _getCategoriesSectionIndex(),
                   selectedSectionIndex: _selectedSectionIndex,
                   selectedItemIndex: _selectedItemIndex,
+                  categoryKeys: _categoryKeys,
                 ),
                 const SizedBox(height: 100),
               ],
@@ -1610,12 +1613,14 @@ class CategoriesSection extends StatelessWidget {
   final int baseSectionIndex;
   final int selectedSectionIndex;
   final int selectedItemIndex;
+  final Map<int, GlobalKey> categoryKeys;
   
   const CategoriesSection({
     super.key,
     required this.baseSectionIndex,
     required this.selectedSectionIndex,
     required this.selectedItemIndex,
+    required this.categoryKeys,
   });
 
   @override
@@ -1638,14 +1643,22 @@ class CategoriesSection extends StatelessWidget {
             final isLoading = isLoadingCategoryFilms[categoryId] ?? true;
             final sectionIndex = baseSectionIndex + index;
             final isSectionSelected = selectedSectionIndex == sectionIndex;
+            
+            // Create or get the key for this category
+            if (!categoryKeys.containsKey(index)) {
+              categoryKeys[index] = GlobalKey();
+            }
 
-            return CategorySection(
-              category: category,
-              films: films,
-              isLoading: isLoading,
-              isDarkMode: true,
-              isSelected: isSectionSelected,
-              selectedItemIndex: selectedItemIndex,
+            return Container(
+              key: categoryKeys[index],
+              child: CategorySection(
+                category: category,
+                films: films,
+                isLoading: isLoading,
+                isDarkMode: true,
+                isSelected: isSectionSelected,
+                selectedItemIndex: selectedItemIndex,
+              ),
             );
           }).toList(),
     );
