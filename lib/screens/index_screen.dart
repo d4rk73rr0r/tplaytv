@@ -1351,8 +1351,8 @@ class BannerItem extends StatelessWidget {
   }
 }
 
-// Latest Viewed Section
-class LatestViewedSection extends StatelessWidget {
+// Latest Viewed Section - Improved with scroll handling
+class LatestViewedSection extends StatefulWidget {
   final bool isSelected;
   final int selectedIndex;
   final ScrollController scrollController;
@@ -1365,6 +1365,54 @@ class LatestViewedSection extends StatelessWidget {
   });
 
   @override
+  State<LatestViewedSection> createState() => _LatestViewedSectionState();
+}
+
+class _LatestViewedSectionState extends State<LatestViewedSection> {
+  int _previousSelectedIndex = -1;
+
+  @override
+  void didUpdateWidget(LatestViewedSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    
+    // Trigger scroll when selection changes
+    if (widget.isSelected && 
+        widget.selectedIndex != _previousSelectedIndex &&
+        widget.scrollController.hasClients) {
+      _previousSelectedIndex = widget.selectedIndex;
+      
+      // Schedule scroll after frame to ensure proper positioning
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToSelectedItem();
+      });
+    }
+  }
+
+  // Scroll the selected item into view
+  void _scrollToSelectedItem() {
+    if (!widget.scrollController.hasClients) return;
+
+    const double itemExtent = 250.0; // itemWidth (240) + margin (10)
+    const double itemWidth = 240.0;
+    
+    final viewportWidth = widget.scrollController.position.viewportDimension;
+    
+    // Calculate target offset to center the selected item
+    final targetOffset = (widget.selectedIndex * itemExtent) -
+        (viewportWidth / 2) +
+        (itemWidth / 2);
+    
+    final maxOffset = widget.scrollController.position.maxScrollExtent;
+    final clampedOffset = targetOffset.clamp(0.0, maxOffset);
+
+    widget.scrollController.animateTo(
+      clampedOffset,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final provider = Provider.of<IndexScreenProvider>(context);
     final latestViewed = provider.latestViewed;
@@ -1375,7 +1423,7 @@ class LatestViewedSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            "Ko‘rishni davom ettirish",
+            "Ko'rishni davom ettirish",
             style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.bold,
@@ -1386,7 +1434,7 @@ class LatestViewedSection extends StatelessWidget {
           SizedBox(
             height: 140, // Adjusted for 16:9 aspect ratio
             child: ListView.builder(
-              controller: scrollController,
+              controller: widget.scrollController,
               scrollDirection: Axis.horizontal,
               itemCount:
                   latestViewed.length > 6
@@ -1397,7 +1445,7 @@ class LatestViewedSection extends StatelessWidget {
               itemBuilder: (context, index) {
                 // If we have more than 6 items and this is the 7th position, show View All card
                 if (latestViewed.length > 6 && index == 6) {
-                  final itemSelected = isSelected && selectedIndex == index;
+                  final itemSelected = widget.isSelected && widget.selectedIndex == index;
                   return ViewAllCard(
                     width: 240,
                     height: 135, // 240 * 9/16 ≈ 135
@@ -1410,7 +1458,7 @@ class LatestViewedSection extends StatelessWidget {
                     },
                   );
                 }
-                final itemSelected = isSelected && selectedIndex == index;
+                final itemSelected = widget.isSelected && widget.selectedIndex == index;
                 return LatestViewedItem(
                   item: latestViewed[index],
                   isSelected: itemSelected,
@@ -1423,6 +1471,7 @@ class LatestViewedSection extends StatelessWidget {
     );
   }
 }
+
 
 // Latest Viewed Item
 class LatestViewedItem extends StatelessWidget {
@@ -1992,7 +2041,8 @@ class CategoriesSection extends StatelessWidget {
 }
 
 // Category Section
-class CategorySection extends StatelessWidget {
+// Category Section - Improved with scroll handling
+class CategorySection extends StatefulWidget {
   final dynamic category;
   final List<dynamic> films;
   final bool isLoading;
@@ -2013,16 +2063,68 @@ class CategorySection extends StatelessWidget {
   });
 
   @override
+  State<CategorySection> createState() => _CategorySectionState();
+}
+
+class _CategorySectionState extends State<CategorySection> {
+  int _previousSelectedIndex = -1;
+
+  @override
+  void didUpdateWidget(CategorySection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    
+    // Trigger scroll when selection changes
+    if (widget.isSelected && 
+        widget.selectedItemIndex != _previousSelectedIndex &&
+        widget.scrollController.hasClients) {
+      _previousSelectedIndex = widget.selectedItemIndex;
+      
+      // Schedule scroll after frame to ensure proper positioning
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToSelectedItem();
+      });
+    }
+  }
+
+  // Scroll the selected item into view
+  void _scrollToSelectedItem() {
+    if (!widget.scrollController.hasClients) return;
+
+    final screenWidth = MediaQuery.of(context).size.width;
+    const horizontalPadding = 24.0 * 2;
+    const itemMargin = 8.0;
+    final itemWidth =
+        (screenWidth - horizontalPadding - itemMargin * 5.5) / 5.5;
+    final itemExtent = itemWidth + itemMargin;
+    
+    final viewportWidth = widget.scrollController.position.viewportDimension;
+    
+    // Calculate target offset to center the selected item
+    final targetOffset = (widget.selectedItemIndex * itemExtent) -
+        (viewportWidth / 2) +
+        (itemWidth / 2);
+    
+    final maxOffset = widget.scrollController.position.maxScrollExtent;
+    final clampedOffset = targetOffset.clamp(0.0, maxOffset);
+
+    widget.scrollController.animateTo(
+      clampedOffset,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     const horizontalPadding = 24.0 * 2;
-    const itemMargin = 8.0; // Kartalar orasidagi masofa belgilangan
+    const itemMargin = 8.0; // Spacing between cards
     final itemWidth =
         (screenWidth - horizontalPadding - itemMargin * 5.5) /
-        5.5; // Endi ekranda 5.5 ta karta
+        5.5; // Display ~5.5 cards on screen
     final itemHeight = itemWidth * 1.5;
 
-    // Section balandligini oshiramiz - matnlar uchun ko'proq joy
+    // Increase section height for text
     final sectionHeight = itemHeight + 100;
 
     return Padding(
@@ -2031,7 +2133,7 @@ class CategorySection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            category['title_uz'] ?? 'Noma\'lum',
+            widget.category['title_uz'] ?? 'Noma\'lum',
             style: const TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.bold,
@@ -2042,11 +2144,11 @@ class CategorySection extends StatelessWidget {
           SizedBox(
             height: sectionHeight,
             child:
-                isLoading
+                widget.isLoading
                     ? const Center(
                       child: CircularProgressIndicator(color: Colors.white),
                     )
-                    : films.isEmpty
+                    : widget.films.isEmpty
                     ? const Center(
                       child: Text(
                         "Kontent mavjud emas",
@@ -2055,17 +2157,17 @@ class CategorySection extends StatelessWidget {
                     )
                     : ListView.builder(
                       padding: const EdgeInsets.only(left: 8, right: 24),
-                      controller: scrollController,
+                      controller: widget.scrollController,
                       scrollDirection: Axis.horizontal,
-                      itemCount: films.length + (films.isNotEmpty ? 1 : 0),
+                      itemCount: widget.films.length + (widget.films.isNotEmpty ? 1 : 0),
                       itemExtent:
                           itemWidth +
-                          itemMargin, // Elementlar orasiga masofa qo'shamiz
+                          itemMargin, // Add spacing between elements
                       cacheExtent: 500,
                       itemBuilder: (context, index) {
-                        if (index == films.length) {
+                        if (index == widget.films.length) {
                           final itemSelected =
-                              isSelected && selectedItemIndex == index;
+                              widget.isSelected && widget.selectedItemIndex == index;
                           return ViewAllCard(
                             width: itemWidth,
                             height: itemHeight,
@@ -2074,16 +2176,16 @@ class CategorySection extends StatelessWidget {
                               Navigator.push(
                                 context,
                                 createSlideRoute(
-                                  CategoriesScreen(initialCategory: category),
+                                  CategoriesScreen(initialCategory: widget.category),
                                 ),
                               );
                             },
                           );
                         }
                         final itemSelected =
-                            isSelected && selectedItemIndex == index;
+                            widget.isSelected && widget.selectedItemIndex == index;
                         return FilmItem(
-                          film: films[index],
+                          film: widget.films[index],
                           itemWidth: itemWidth,
                           itemHeight: itemHeight,
                           isSelected: itemSelected,
@@ -2096,6 +2198,7 @@ class CategorySection extends StatelessWidget {
     );
   }
 }
+
 
 // Film Item
 class FilmItem extends StatelessWidget {
