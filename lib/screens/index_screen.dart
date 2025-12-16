@@ -494,21 +494,37 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
   }
 
   // Scroll horizontally to the currently selected item
+  // This method dynamically calculates item widths based on the section type
+  // and ensures that the selected card is centered or fully brought into view
   void _scrollToCurrentItem() {
     final controller = _horizontalScrollControllers[_selectedSectionIndex];
     if (controller == null || !controller.hasClients) return;
 
-    // Approximate item width - will vary by section but this is a good average
-    const double itemWidth = 200.0;
+    final provider = Provider.of<IndexScreenProvider>(context, listen: false);
     final double viewportWidth = controller.position.viewportDimension;
+    
+    // Calculate section-specific item width and margin
+    final itemDimensions = _getItemDimensionsForSection(
+      _selectedSectionIndex, 
+      provider,
+      viewportWidth,
+    );
+    final double itemWidth = itemDimensions['width']!;
+    final double itemMargin = itemDimensions['margin']!;
+    
+    // Total width occupied by each item (card + margin)
+    final double itemExtent = itemWidth + itemMargin;
 
-    // Center the selected item in the viewport
+    // Calculate target scroll offset to center the selected item
+    // We position the item so its center aligns with the viewport center
     final double targetOffset =
-        (_selectedItemIndex * itemWidth) -
+        (_selectedItemIndex * itemExtent) -
         (viewportWidth / 2) +
         (itemWidth / 2);
 
     final double maxOffset = controller.position.maxScrollExtent;
+    
+    // Clamp the offset to valid scroll range
     final double clampedOffset = targetOffset.clamp(0.0, maxOffset);
 
     controller.animateTo(
@@ -516,6 +532,70 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeOut,
     );
+  }
+
+  // Calculate item width and margin for each section type
+  // This ensures scroll behavior matches the actual card dimensions
+  Map<String, double> _getItemDimensionsForSection(
+    int sectionIndex,
+    IndexScreenProvider provider,
+    double viewportWidth,
+  ) {
+    int currentSection = 0;
+    final double screenWidth = MediaQuery.of(context).size.width;
+
+    // Banner section - uses carousel, no scroll needed but included for consistency
+    if (provider.banners.isNotEmpty) {
+      if (currentSection == sectionIndex) {
+        return {'width': viewportWidth * 0.9, 'margin': 16.0};
+      }
+      currentSection++;
+    }
+
+    // Latest Viewed section - 16:9 aspect ratio cards
+    if (provider.latestViewed.isNotEmpty) {
+      if (currentSection == sectionIndex) {
+        return {'width': 240.0, 'margin': 16.0};
+      }
+      currentSection++;
+    }
+
+    // Recommended Films section - uses RecommendedFilmsWidget
+    if (provider.recommendedFilms.isNotEmpty) {
+      if (currentSection == sectionIndex) {
+        return {'width': 160.0, 'margin': 16.0};
+      }
+      currentSection++;
+    }
+
+    // Genres section - dynamically calculated based on screen size
+    // Shows ~3 cards at a time for optimal viewing
+    if (provider.genresPreview.isNotEmpty) {
+      if (currentSection == sectionIndex) {
+        const horizontalPadding = 24.0 * 2; // left + right padding
+        const itemMargin = 16.0;
+        final availableWidth = screenWidth - horizontalPadding;
+        final itemWidth = (availableWidth - itemMargin * 2) / 3;
+        return {'width': itemWidth, 'margin': itemMargin};
+      }
+      currentSection++;
+    }
+
+    // Category sections - dynamically calculated
+    // Shows ~5.5 cards at a time
+    for (var category in provider.categories) {
+      if (currentSection == sectionIndex) {
+        const horizontalPadding = 24.0 * 2;
+        const itemMargin = 8.0;
+        final itemWidth =
+            (screenWidth - horizontalPadding - itemMargin * 5.5) / 5.5;
+        return {'width': itemWidth, 'margin': itemMargin};
+      }
+      currentSection++;
+    }
+
+    // Default fallback
+    return {'width': 200.0, 'margin': 16.0};
   }
 
   // Get or create a scroll controller for a section
@@ -1513,8 +1593,10 @@ class RecommendedFilmsSection extends StatelessWidget {
   }
 }
 
-// Genres Section - YANGI VERSIYA
-class GenresSection extends StatelessWidget {
+// Genres Section - Improved version with better scroll handling
+// This widget displays genre cards in a horizontal scrollable list
+// and ensures proper navigation and scrolling for TV remote control
+class GenresSection extends StatefulWidget {
   final VoidCallback onRetry;
   final bool isSelected;
   final int selectedIndex;
@@ -1527,6 +1609,59 @@ class GenresSection extends StatelessWidget {
     this.selectedIndex = 0,
     required this.scrollController,
   });
+
+  @override
+  State<GenresSection> createState() => _GenresSectionState();
+}
+
+class _GenresSectionState extends State<GenresSection> {
+  int _previousSelectedIndex = -1;
+
+  @override
+  void didUpdateWidget(GenresSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    
+    // Trigger scroll when selection changes
+    if (widget.isSelected && 
+        widget.selectedIndex != _previousSelectedIndex &&
+        widget.scrollController.hasClients) {
+      _previousSelectedIndex = widget.selectedIndex;
+      
+      // Schedule scroll after frame to ensure proper positioning
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToSelectedItem();
+      });
+    }
+  }
+
+  // Scroll the selected item into view
+  // This method centers the selected card in the viewport
+  void _scrollToSelectedItem() {
+    if (!widget.scrollController.hasClients) return;
+
+    final screenWidth = MediaQuery.of(context).size.width;
+    const horizontalPadding = 24.0 * 2;
+    const itemMargin = 16.0;
+    final availableWidth = screenWidth - horizontalPadding;
+    final itemWidth = (availableWidth - itemMargin * 2) / 3;
+    final itemExtent = itemWidth + itemMargin;
+    
+    final viewportWidth = widget.scrollController.position.viewportDimension;
+    
+    // Calculate target offset to center the selected item
+    final targetOffset = (widget.selectedIndex * itemExtent) -
+        (viewportWidth / 2) +
+        (itemWidth / 2);
+    
+    final maxOffset = widget.scrollController.position.maxScrollExtent;
+    final clampedOffset = targetOffset.clamp(0.0, maxOffset);
+
+    widget.scrollController.animateTo(
+      clampedOffset,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1546,7 +1681,7 @@ class GenresSection extends StatelessWidget {
         padding: const EdgeInsets.all(24.0),
         child: ErrorScreen(
           errorMessage: "Janrlarni yuklashda xato: $error",
-          onRetry: onRetry,
+          onRetry: widget.onRetry,
         ),
       );
     }
@@ -1562,13 +1697,14 @@ class GenresSection extends StatelessWidget {
       );
     }
 
-    // Ekranda ~3 ta karta ko‘rinishi uchun hisob-kitob
+    // Calculate item dimensions based on screen width
+    // Display ~3 cards at a time for optimal viewing on TV
     final screenWidth = MediaQuery.of(context).size.width;
-    const horizontalPadding = 24.0 * 2; // left + right
-    const itemMargin = 16.0; // kartalar orasidagi bo‘shliq
+    const horizontalPadding = 24.0 * 2; // left + right padding
+    const itemMargin = 16.0; // spacing between cards
     final availableWidth = screenWidth - horizontalPadding;
-    final itemWidth = (availableWidth - itemMargin * 2) / 3; // ~3 ta karta
-    final itemHeight = itemWidth * (9 / 16); // 16:9 nisbat
+    final itemWidth = (availableWidth - itemMargin * 2) / 3; // ~3 cards visible
+    final itemHeight = itemWidth * (9 / 16); // 16:9 aspect ratio
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 24.0),
@@ -1585,18 +1721,18 @@ class GenresSection extends StatelessWidget {
           ),
           const SizedBox(height: 20),
           SizedBox(
-            height: itemHeight + 100, // rasm + matnlar uchun joy
+            height: itemHeight + 100, // Image + text space
             child: ListView.builder(
-              controller: scrollController,
+              controller: widget.scrollController,
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.only(left: 8),
-              itemCount: genres.length > 6 ? 7 : genres.length,
-              itemExtent: itemWidth + itemMargin,
+              itemCount: genres.length > 6 ? 7 : genres.length, // Limit to 6 + View All
+              itemExtent: itemWidth + itemMargin, // Total width per item including margin
               cacheExtent: 800,
               itemBuilder: (context, index) {
-                final bool itemSelected = isSelected && selectedIndex == index;
+                final bool itemSelected = widget.isSelected && widget.selectedIndex == index;
 
-                // View All kartasi
+                // Show "View All" card as the 7th item if there are more than 6 genres
                 if (genres.length > 6 && index == 6) {
                   return ViewAllCard(
                     width: itemWidth,
@@ -1613,7 +1749,6 @@ class GenresSection extends StatelessWidget {
 
                 final genre = genres[index];
                 return GenreFilmStyleCard(
-                  // Yangi widget - film kartasi kabi
                   genre: genre,
                   itemWidth: itemWidth,
                   itemHeight: itemHeight,
@@ -1626,7 +1761,7 @@ class GenresSection extends StatelessWidget {
                     )) {
                       _showErrorDialog(
                         context,
-                        'Tarmoq aloqasi yo‘q. Iltimos, internet aloqasini tekshiring.',
+                        'Tarmoq aloqasi yo'q. Iltimos, internet aloqasini tekshiring.',
                       );
                     } else {
                       Navigator.push(
@@ -1661,6 +1796,7 @@ class GenresSection extends StatelessWidget {
     );
   }
 }
+
 
 // Janr kartasini film kartasi dizaynida ko‘rsatish uchun yangi widget
 // GenreFilmStyleCard widget - yangilangan versiya
