@@ -19,6 +19,7 @@ class RecommendedFilmsWidget extends StatelessWidget {
   final VoidCallback onMoreTap;
   final bool isSelected;
   final int selectedIndex;
+  final ScrollController? scrollController;
 
   const RecommendedFilmsWidget({
     super.key,
@@ -30,6 +31,7 @@ class RecommendedFilmsWidget extends StatelessWidget {
     required bool isDark,
     this.isSelected = false,
     this.selectedIndex = 0,
+    this.scrollController,
   });
 
   void _showErrorDialog(BuildContext context, String message) {
@@ -160,6 +162,7 @@ class RecommendedFilmsWidget extends StatelessWidget {
                       ),
                     )
                     : ListView.builder(
+                      controller: scrollController,
                       scrollDirection: Axis.horizontal,
                       physics: const BouncingScrollPhysics(),
                       cacheExtent: 500,

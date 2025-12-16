@@ -207,6 +207,9 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
   // Scroll controller for vertical scrolling
   late ScrollController _scrollController;
   
+  // Horizontal scroll controllers for each section
+  final Map<int, ScrollController> _horizontalScrollControllers = {};
+  
   // Global keys for sections to enable scrolling
   final GlobalKey _bannerKey = GlobalKey();
   final GlobalKey _latestViewedKey = GlobalKey();
@@ -252,6 +255,10 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
     _connectivitySubscription?.cancel();
     _contentFocusNode.dispose();
     _scrollController.dispose();
+    // Dispose horizontal scroll controllers
+    for (final controller in _horizontalScrollControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -498,6 +505,39 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
     }
   }
 
+  // Scroll horizontally to the currently selected item
+  void _scrollToCurrentItem() {
+    final controller = _horizontalScrollControllers[_selectedSectionIndex];
+    if (controller == null || !controller.hasClients) return;
+
+    // Approximate item width - will vary by section but this is a good average
+    const double itemWidth = 200.0;
+    final double viewportWidth = controller.position.viewportDimension;
+    
+    // Center the selected item in the viewport
+    final double targetOffset =
+        (_selectedItemIndex * itemWidth) -
+        (viewportWidth / 2) +
+        (itemWidth / 2);
+
+    final double maxOffset = controller.position.maxScrollExtent;
+    final double clampedOffset = targetOffset.clamp(0.0, maxOffset);
+
+    controller.animateTo(
+      clampedOffset,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
+  }
+
+  // Get or create a scroll controller for a section
+  ScrollController _getScrollControllerForSection(int sectionIndex) {
+    if (!_horizontalScrollControllers.containsKey(sectionIndex)) {
+      _horizontalScrollControllers[sectionIndex] = ScrollController();
+    }
+    return _horizontalScrollControllers[sectionIndex]!;
+  }
+
   // TV Remote control key event handler
   KeyEventResult _handleContentKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
@@ -547,6 +587,7 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
           _selectedItemIndex++;
         }
       });
+      _scrollToCurrentItem();
       return KeyEventResult.handled;
     }
 
@@ -556,6 +597,7 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
         setState(() {
           _selectedItemIndex--;
         });
+        _scrollToCurrentItem();
         return KeyEventResult.handled;
       } else {
         // At the first item - let parent handle to open sidebar menu
@@ -785,6 +827,7 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
                     child: LatestViewedSection(
                       isSelected: _selectedSectionIndex == (provider.banners.isNotEmpty ? 1 : 0),
                       selectedIndex: _selectedItemIndex,
+                      scrollController: _getScrollControllerForSection(provider.banners.isNotEmpty ? 1 : 0),
                     ),
                   ),
                 Container(
@@ -792,6 +835,7 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
                   child: RecommendedFilmsSection(
                     isSelected: _selectedSectionIndex == _getRecommendedSectionIndex(),
                     selectedIndex: _selectedItemIndex,
+                    scrollController: _getScrollControllerForSection(_getRecommendedSectionIndex()),
                   ),
                 ),
                 Container(
@@ -800,6 +844,7 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
                     onRetry: _onRetry,
                     isSelected: _selectedSectionIndex == _getGenresSectionIndex(),
                     selectedIndex: _selectedItemIndex,
+                    scrollController: _getScrollControllerForSection(_getGenresSectionIndex()),
                   ),
                 ),
                 CategoriesSection(
@@ -807,6 +852,7 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
                   selectedSectionIndex: _selectedSectionIndex,
                   selectedItemIndex: _selectedItemIndex,
                   categoryKeys: _categoryKeys,
+                  getScrollController: _getScrollControllerForSection,
                 ),
                 const SizedBox(height: 100),
               ],
@@ -1228,11 +1274,13 @@ class BannerItem extends StatelessWidget {
 class LatestViewedSection extends StatelessWidget {
   final bool isSelected;
   final int selectedIndex;
+  final ScrollController scrollController;
   
   const LatestViewedSection({
     super.key,
     this.isSelected = false,
     this.selectedIndex = 0,
+    required this.scrollController,
   });
 
   @override
@@ -1284,6 +1332,7 @@ class LatestViewedSection extends StatelessWidget {
           SizedBox(
             height: 180,
             child: ListView.builder(
+              controller: scrollController,
               scrollDirection: Axis.horizontal,
               itemCount: latestViewed.length,
               itemExtent: 200,
@@ -1430,11 +1479,13 @@ class LatestViewedItem extends StatelessWidget {
 class RecommendedFilmsSection extends StatelessWidget {
   final bool isSelected;
   final int selectedIndex;
+  final ScrollController scrollController;
   
   const RecommendedFilmsSection({
     super.key,
     this.isSelected = false,
     this.selectedIndex = 0,
+    required this.scrollController,
   });
 
   @override
@@ -1447,6 +1498,7 @@ class RecommendedFilmsSection extends StatelessWidget {
       isLoading: provider.isLoadingRecommended,
       isSelected: isSelected,
       selectedIndex: selectedIndex,
+      scrollController: scrollController,
       onTap: (film) {
         final filmId = film['id'];
         Navigator.push(context, createSlideRoute(FilmScreen(filmId: filmId)));
@@ -1467,12 +1519,14 @@ class GenresSection extends StatelessWidget {
   final VoidCallback onRetry;
   final bool isSelected;
   final int selectedIndex;
+  final ScrollController scrollController;
 
   const GenresSection({
     super.key,
     required this.onRetry,
     this.isSelected = false,
     this.selectedIndex = 0,
+    required this.scrollController,
   });
 
   @override
@@ -1552,6 +1606,7 @@ class GenresSection extends StatelessWidget {
         SizedBox(
           height: 250,
           child: ListView.builder(
+            controller: scrollController,
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 24),
             itemCount: genres.length,
@@ -1614,6 +1669,7 @@ class CategoriesSection extends StatelessWidget {
   final int selectedSectionIndex;
   final int selectedItemIndex;
   final Map<int, GlobalKey> categoryKeys;
+  final ScrollController Function(int) getScrollController;
   
   const CategoriesSection({
     super.key,
@@ -1621,6 +1677,7 @@ class CategoriesSection extends StatelessWidget {
     required this.selectedSectionIndex,
     required this.selectedItemIndex,
     required this.categoryKeys,
+    required this.getScrollController,
   });
 
   @override
@@ -1658,6 +1715,7 @@ class CategoriesSection extends StatelessWidget {
                 isDarkMode: true,
                 isSelected: isSectionSelected,
                 selectedItemIndex: selectedItemIndex,
+                scrollController: getScrollController(sectionIndex),
               ),
             );
           }).toList(),
@@ -1673,6 +1731,7 @@ class CategorySection extends StatelessWidget {
   final bool isDarkMode;
   final bool isSelected;
   final int selectedItemIndex;
+  final ScrollController scrollController;
 
   const CategorySection({
     super.key,
@@ -1682,6 +1741,7 @@ class CategorySection extends StatelessWidget {
     required this.isDarkMode,
     this.isSelected = false,
     this.selectedItemIndex = 0,
+    required this.scrollController,
   });
 
   @override
@@ -1751,6 +1811,7 @@ class CategorySection extends StatelessWidget {
                       ),
                     )
                     : ListView.builder(
+                      controller: scrollController,
                       scrollDirection: Axis.horizontal,
                       itemCount: films.length,
                       itemExtent: itemWidth + itemMargin,
