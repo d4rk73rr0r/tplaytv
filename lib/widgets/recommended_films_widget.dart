@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter/services.dart';
+import 'package:tplaytv/screens/index_screen.dart';
 
 final customCacheManager = CacheManager(
   Config(
@@ -166,9 +167,19 @@ class RecommendedFilmsWidget extends StatelessWidget {
                       scrollDirection: Axis.horizontal,
                       physics: const BouncingScrollPhysics(),
                       cacheExtent: 500,
-                      itemCount: films.length,
+                      itemCount: films.length > 6 ? 7 : films.length, // Limit to 6 + 1 for View All
                       itemExtent: itemWidth + itemMargin,
                       itemBuilder: (context, index) {
+                        // If we have more than 6 items and this is the 7th position, show View All card
+                        if (films.length > 6 && index == 6) {
+                          final itemSelected = isSelected && selectedIndex == index;
+                          return ViewAllCard(
+                            width: itemWidth,
+                            height: itemHeight,
+                            isSelected: itemSelected,
+                            onTap: onMoreTap,
+                          );
+                        }
                         final film = films[index];
                         final itemSelected = isSelected && selectedIndex == index;
                         final files = film['files'] as List<dynamic>? ?? [];

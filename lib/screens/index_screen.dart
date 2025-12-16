@@ -624,29 +624,38 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
       currentSection++;
     }
     
-    // Latest viewed section
+    // Latest viewed section - limit to 7 items (6 + View All)
     if (provider.latestViewed.isNotEmpty) {
-      if (currentSection == sectionIndex) return provider.latestViewed.length;
+      if (currentSection == sectionIndex) {
+        return provider.latestViewed.length > 6 ? 7 : provider.latestViewed.length;
+      }
       currentSection++;
     }
     
-    // Recommended section
+    // Recommended section - limit to 7 items (6 + View All)
     if (provider.recommendedFilms.isNotEmpty) {
-      if (currentSection == sectionIndex) return provider.recommendedFilms.length;
+      if (currentSection == sectionIndex) {
+        return provider.recommendedFilms.length > 6 ? 7 : provider.recommendedFilms.length;
+      }
       currentSection++;
     }
     
-    // Genres section
+    // Genres section - limit to 7 items (6 + View All)
     if (provider.genresPreview.isNotEmpty) {
-      if (currentSection == sectionIndex) return provider.genresPreview.length;
+      if (currentSection == sectionIndex) {
+        return provider.genresPreview.length > 6 ? 7 : provider.genresPreview.length;
+      }
       currentSection++;
     }
     
-    // Category sections
+    // Category sections - limit to 7 items (6 + View All)
     for (var category in provider.categories) {
       final categoryId = category['id'];
       final films = provider.categoryFilms[categoryId] ?? [];
-      if (currentSection == sectionIndex) return films.isNotEmpty ? films.length : 1;
+      if (currentSection == sectionIndex) {
+        if (films.isEmpty) return 1;
+        return films.length > 6 ? 7 : films.length;
+      }
       currentSection++;
     }
     
@@ -673,6 +682,11 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
     // Latest viewed section
     if (provider.latestViewed.isNotEmpty) {
       if (currentSection == _selectedSectionIndex) {
+        // Check if View All card is selected
+        if (provider.latestViewed.length > 6 && _selectedItemIndex == 6) {
+          Navigator.push(context, createSlideRoute(const LatestViewedScreen()));
+          return;
+        }
         final item = provider.latestViewed[_selectedItemIndex];
         final film = item['film'] as Map<String, dynamic>? ?? {};
         final filmId = film['id'] ?? 0;
@@ -687,6 +701,11 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
     // Recommended section
     if (provider.recommendedFilms.isNotEmpty) {
       if (currentSection == _selectedSectionIndex) {
+        // Check if View All card is selected
+        if (provider.recommendedFilms.length > 6 && _selectedItemIndex == 6) {
+          Navigator.push(context, createSlideRoute(const RecommendedFilmsScreen()));
+          return;
+        }
         final film = provider.recommendedFilms[_selectedItemIndex];
         final filmId = film['id'];
         Navigator.push(context, createSlideRoute(FilmScreen(filmId: filmId)));
@@ -698,6 +717,11 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
     // Genres section
     if (provider.genresPreview.isNotEmpty) {
       if (currentSection == _selectedSectionIndex) {
+        // Check if View All card is selected
+        if (provider.genresPreview.length > 6 && _selectedItemIndex == 6) {
+          Navigator.push(context, createSlideRoute(const GenresScreen()));
+          return;
+        }
         final genre = provider.genresPreview[_selectedItemIndex];
         Navigator.push(context, createSlideRoute(GenresFilmsScreen(genre: genre)));
         return;
@@ -710,6 +734,14 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
       final categoryId = category['id'];
       final films = provider.categoryFilms[categoryId] ?? [];
       if (currentSection == _selectedSectionIndex && films.isNotEmpty) {
+        // Check if View All card is selected
+        if (films.length > 6 && _selectedItemIndex == 6) {
+          Navigator.push(
+            context,
+            createSlideRoute(CategoriesScreen(initialCategory: category)),
+          );
+          return;
+        }
         final film = films[_selectedItemIndex];
         final filmId = film['id'];
         Navigator.push(context, createSlideRoute(FilmScreen(filmId: filmId)));
@@ -1334,10 +1366,25 @@ class LatestViewedSection extends StatelessWidget {
             child: ListView.builder(
               controller: scrollController,
               scrollDirection: Axis.horizontal,
-              itemCount: latestViewed.length,
+              itemCount: latestViewed.length > 6 ? 7 : latestViewed.length, // Limit to 6 + 1 for View All
               itemExtent: 200,
               cacheExtent: 500,
               itemBuilder: (context, index) {
+                // If we have more than 6 items and this is the 7th position, show View All card
+                if (latestViewed.length > 6 && index == 6) {
+                  final itemSelected = isSelected && selectedIndex == index;
+                  return ViewAllCard(
+                    width: 190,
+                    height: 180,
+                    isSelected: itemSelected,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        createSlideRoute(const LatestViewedScreen()),
+                      );
+                    },
+                  );
+                }
                 final itemSelected = isSelected && selectedIndex == index;
                 return LatestViewedItem(
                   item: latestViewed[index],
@@ -1609,9 +1656,24 @@ class GenresSection extends StatelessWidget {
             controller: scrollController,
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 24),
-            itemCount: genres.length,
+            itemCount: genres.length > 6 ? 7 : genres.length, // Limit to 6 + 1 for View All
             cacheExtent: 500,
             itemBuilder: (context, index) {
+              // If we have more than 6 items and this is the 7th position, show View All card
+              if (genres.length > 6 && index == 6) {
+                final itemSelected = isSelected && selectedIndex == index;
+                return ViewAllCard(
+                  width: 350,
+                  height: 250,
+                  isSelected: itemSelected,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      createSlideRoute(const GenresScreen()),
+                    );
+                  },
+                );
+              }
               final genre = genres[index];
               final itemSelected = isSelected && selectedIndex == index;
               return Padding(
@@ -1813,10 +1875,27 @@ class CategorySection extends StatelessWidget {
                     : ListView.builder(
                       controller: scrollController,
                       scrollDirection: Axis.horizontal,
-                      itemCount: films.length,
+                      itemCount: films.length > 6 ? 7 : films.length, // Limit to 6 + 1 for View All
                       itemExtent: itemWidth + itemMargin,
                       cacheExtent: 500,
                       itemBuilder: (context, index) {
+                        // If we have more than 6 items and this is the 7th position, show View All card
+                        if (films.length > 6 && index == 6) {
+                          final itemSelected = isSelected && selectedItemIndex == index;
+                          return ViewAllCard(
+                            width: itemWidth,
+                            height: itemHeight,
+                            isSelected: itemSelected,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                createSlideRoute(
+                                  CategoriesScreen(initialCategory: category),
+                                ),
+                              );
+                            },
+                          );
+                        }
                         final itemSelected = isSelected && selectedItemIndex == index;
                         return FilmItem(
                           film: films[index],
@@ -2045,6 +2124,78 @@ class GenreCard extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// View All Card - navigates to full content screen
+class ViewAllCard extends StatelessWidget {
+  final double width;
+  final double height;
+  final VoidCallback onTap;
+  final bool isSelected;
+
+  const ViewAllCard({
+    super.key,
+    required this.width,
+    required this.height,
+    required this.onTap,
+    this.isSelected = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        transform:
+            isSelected
+                ? (Matrix4.identity()..scale(1.05))
+                : Matrix4.identity(),
+        margin: const EdgeInsets.only(right: 16),
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          color: Colors.grey[800]?.withOpacity(0.5),
+          border: Border.all(
+            color: isSelected ? Colors.yellow : Colors.grey[700]!,
+            width: isSelected ? 3 : 1,
+          ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: Colors.yellow.withOpacity(0.5),
+                    blurRadius: 15,
+                    spreadRadius: 3,
+                  ),
+                ]
+              : null,
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.arrow_forward,
+                size: 48,
+                color: isSelected ? Colors.yellow : Colors.white,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                "Barchasini ko'rish",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isSelected ? Colors.yellow : Colors.white,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       ),
     );
