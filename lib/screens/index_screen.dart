@@ -494,21 +494,37 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
   }
 
   // Scroll horizontally to the currently selected item
+  // This method dynamically calculates item widths based on the section type
+  // and ensures that the selected card is centered or fully brought into view
   void _scrollToCurrentItem() {
     final controller = _horizontalScrollControllers[_selectedSectionIndex];
     if (controller == null || !controller.hasClients) return;
 
-    // Approximate item width - will vary by section but this is a good average
-    const double itemWidth = 200.0;
+    final provider = Provider.of<IndexScreenProvider>(context, listen: false);
     final double viewportWidth = controller.position.viewportDimension;
+    
+    // Calculate section-specific item width and margin
+    final itemDimensions = _getItemDimensionsForSection(
+      _selectedSectionIndex, 
+      provider,
+      viewportWidth,
+    );
+    final double itemWidth = itemDimensions['width']!;
+    final double itemMargin = itemDimensions['margin']!;
+    
+    // Total width occupied by each item (card + margin)
+    final double itemExtent = itemWidth + itemMargin;
 
-    // Center the selected item in the viewport
+    // Calculate target scroll offset to center the selected item
+    // We position the item so its center aligns with the viewport center
     final double targetOffset =
-        (_selectedItemIndex * itemWidth) -
+        (_selectedItemIndex * itemExtent) -
         (viewportWidth / 2) +
         (itemWidth / 2);
 
     final double maxOffset = controller.position.maxScrollExtent;
+    
+    // Clamp the offset to valid scroll range
     final double clampedOffset = targetOffset.clamp(0.0, maxOffset);
 
     controller.animateTo(
@@ -516,6 +532,70 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeOut,
     );
+  }
+
+  // Calculate item width and margin for each section type
+  // This ensures scroll behavior matches the actual card dimensions
+  Map<String, double> _getItemDimensionsForSection(
+    int sectionIndex,
+    IndexScreenProvider provider,
+    double viewportWidth,
+  ) {
+    int currentSection = 0;
+    final double screenWidth = MediaQuery.of(context).size.width;
+
+    // Banner section - uses carousel, no scroll needed but included for consistency
+    if (provider.banners.isNotEmpty) {
+      if (currentSection == sectionIndex) {
+        return {'width': viewportWidth * 0.9, 'margin': 16.0};
+      }
+      currentSection++;
+    }
+
+    // Latest Viewed section - 16:9 aspect ratio cards
+    if (provider.latestViewed.isNotEmpty) {
+      if (currentSection == sectionIndex) {
+        return {'width': 240.0, 'margin': 16.0};
+      }
+      currentSection++;
+    }
+
+    // Recommended Films section - uses RecommendedFilmsWidget
+    if (provider.recommendedFilms.isNotEmpty) {
+      if (currentSection == sectionIndex) {
+        return {'width': 160.0, 'margin': 16.0};
+      }
+      currentSection++;
+    }
+
+    // Genres section - dynamically calculated based on screen size
+    // Shows ~3 cards at a time for optimal viewing
+    if (provider.genresPreview.isNotEmpty) {
+      if (currentSection == sectionIndex) {
+        const horizontalPadding = 24.0 * 2; // left + right padding
+        const itemMargin = 16.0;
+        final availableWidth = screenWidth - horizontalPadding;
+        final itemWidth = (availableWidth - itemMargin * 2) / 3;
+        return {'width': itemWidth, 'margin': itemMargin};
+      }
+      currentSection++;
+    }
+
+    // Category sections - dynamically calculated
+    // Shows ~5.5 cards at a time
+    for (var category in provider.categories) {
+      if (currentSection == sectionIndex) {
+        const horizontalPadding = 24.0 * 2;
+        const itemMargin = 8.0;
+        final itemWidth =
+            (screenWidth - horizontalPadding - itemMargin * 5.5) / 5.5;
+        return {'width': itemWidth, 'margin': itemMargin};
+      }
+      currentSection++;
+    }
+
+    // Default fallback
+    return {'width': 200.0, 'margin': 16.0};
   }
 
   // Get or create a scroll controller for a section
@@ -1271,8 +1351,8 @@ class BannerItem extends StatelessWidget {
   }
 }
 
-// Latest Viewed Section
-class LatestViewedSection extends StatelessWidget {
+// Latest Viewed Section - Improved with scroll handling
+class LatestViewedSection extends StatefulWidget {
   final bool isSelected;
   final int selectedIndex;
   final ScrollController scrollController;
@@ -1285,6 +1365,54 @@ class LatestViewedSection extends StatelessWidget {
   });
 
   @override
+  State<LatestViewedSection> createState() => _LatestViewedSectionState();
+}
+
+class _LatestViewedSectionState extends State<LatestViewedSection> {
+  int _previousSelectedIndex = -1;
+
+  @override
+  void didUpdateWidget(LatestViewedSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    
+    // Trigger scroll when selection changes
+    if (widget.isSelected && 
+        widget.selectedIndex != _previousSelectedIndex &&
+        widget.scrollController.hasClients) {
+      _previousSelectedIndex = widget.selectedIndex;
+      
+      // Schedule scroll after frame to ensure proper positioning
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToSelectedItem();
+      });
+    }
+  }
+
+  // Scroll the selected item into view
+  void _scrollToSelectedItem() {
+    if (!widget.scrollController.hasClients) return;
+
+    const double itemExtent = 250.0; // itemWidth (240) + margin (10)
+    const double itemWidth = 240.0;
+    
+    final viewportWidth = widget.scrollController.position.viewportDimension;
+    
+    // Calculate target offset to center the selected item
+    final targetOffset = (widget.selectedIndex * itemExtent) -
+        (viewportWidth / 2) +
+        (itemWidth / 2);
+    
+    final maxOffset = widget.scrollController.position.maxScrollExtent;
+    final clampedOffset = targetOffset.clamp(0.0, maxOffset);
+
+    widget.scrollController.animateTo(
+      clampedOffset,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final provider = Provider.of<IndexScreenProvider>(context);
     final latestViewed = provider.latestViewed;
@@ -1295,7 +1423,7 @@ class LatestViewedSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            "Ko‘rishni davom ettirish",
+            "Ko'rishni davom ettirish",
             style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.bold,
@@ -1306,7 +1434,7 @@ class LatestViewedSection extends StatelessWidget {
           SizedBox(
             height: 140, // Adjusted for 16:9 aspect ratio
             child: ListView.builder(
-              controller: scrollController,
+              controller: widget.scrollController,
               scrollDirection: Axis.horizontal,
               itemCount:
                   latestViewed.length > 6
@@ -1317,7 +1445,7 @@ class LatestViewedSection extends StatelessWidget {
               itemBuilder: (context, index) {
                 // If we have more than 6 items and this is the 7th position, show View All card
                 if (latestViewed.length > 6 && index == 6) {
-                  final itemSelected = isSelected && selectedIndex == index;
+                  final itemSelected = widget.isSelected && widget.selectedIndex == index;
                   return ViewAllCard(
                     width: 240,
                     height: 135, // 240 * 9/16 ≈ 135
@@ -1330,7 +1458,7 @@ class LatestViewedSection extends StatelessWidget {
                     },
                   );
                 }
-                final itemSelected = isSelected && selectedIndex == index;
+                final itemSelected = widget.isSelected && widget.selectedIndex == index;
                 return LatestViewedItem(
                   item: latestViewed[index],
                   isSelected: itemSelected,
@@ -1343,6 +1471,7 @@ class LatestViewedSection extends StatelessWidget {
     );
   }
 }
+
 
 // Latest Viewed Item
 class LatestViewedItem extends StatelessWidget {
@@ -1513,8 +1642,10 @@ class RecommendedFilmsSection extends StatelessWidget {
   }
 }
 
-// Genres Section - YANGI VERSIYA
-class GenresSection extends StatelessWidget {
+// Genres Section - Improved version with better scroll handling
+// This widget displays genre cards in a horizontal scrollable list
+// and ensures proper navigation and scrolling for TV remote control
+class GenresSection extends StatefulWidget {
   final VoidCallback onRetry;
   final bool isSelected;
   final int selectedIndex;
@@ -1527,6 +1658,59 @@ class GenresSection extends StatelessWidget {
     this.selectedIndex = 0,
     required this.scrollController,
   });
+
+  @override
+  State<GenresSection> createState() => _GenresSectionState();
+}
+
+class _GenresSectionState extends State<GenresSection> {
+  int _previousSelectedIndex = -1;
+
+  @override
+  void didUpdateWidget(GenresSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    
+    // Trigger scroll when selection changes
+    if (widget.isSelected && 
+        widget.selectedIndex != _previousSelectedIndex &&
+        widget.scrollController.hasClients) {
+      _previousSelectedIndex = widget.selectedIndex;
+      
+      // Schedule scroll after frame to ensure proper positioning
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToSelectedItem();
+      });
+    }
+  }
+
+  // Scroll the selected item into view
+  // This method centers the selected card in the viewport
+  void _scrollToSelectedItem() {
+    if (!widget.scrollController.hasClients) return;
+
+    final screenWidth = MediaQuery.of(context).size.width;
+    const horizontalPadding = 24.0 * 2;
+    const itemMargin = 16.0;
+    final availableWidth = screenWidth - horizontalPadding;
+    final itemWidth = (availableWidth - itemMargin * 2) / 3;
+    final itemExtent = itemWidth + itemMargin;
+    
+    final viewportWidth = widget.scrollController.position.viewportDimension;
+    
+    // Calculate target offset to center the selected item
+    final targetOffset = (widget.selectedIndex * itemExtent) -
+        (viewportWidth / 2) +
+        (itemWidth / 2);
+    
+    final maxOffset = widget.scrollController.position.maxScrollExtent;
+    final clampedOffset = targetOffset.clamp(0.0, maxOffset);
+
+    widget.scrollController.animateTo(
+      clampedOffset,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1546,7 +1730,7 @@ class GenresSection extends StatelessWidget {
         padding: const EdgeInsets.all(24.0),
         child: ErrorScreen(
           errorMessage: "Janrlarni yuklashda xato: $error",
-          onRetry: onRetry,
+          onRetry: widget.onRetry,
         ),
       );
     }
@@ -1562,13 +1746,14 @@ class GenresSection extends StatelessWidget {
       );
     }
 
-    // Ekranda ~3 ta karta ko‘rinishi uchun hisob-kitob
+    // Calculate item dimensions based on screen width
+    // Display ~3 cards at a time for optimal viewing on TV
     final screenWidth = MediaQuery.of(context).size.width;
-    const horizontalPadding = 24.0 * 2; // left + right
-    const itemMargin = 16.0; // kartalar orasidagi bo‘shliq
+    const horizontalPadding = 24.0 * 2; // left + right padding
+    const itemMargin = 16.0; // spacing between cards
     final availableWidth = screenWidth - horizontalPadding;
-    final itemWidth = (availableWidth - itemMargin * 2) / 3; // ~3 ta karta
-    final itemHeight = itemWidth * (9 / 16); // 16:9 nisbat
+    final itemWidth = (availableWidth - itemMargin * 2) / 3; // ~3 cards visible
+    final itemHeight = itemWidth * (9 / 16); // 16:9 aspect ratio
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 24.0),
@@ -1585,18 +1770,18 @@ class GenresSection extends StatelessWidget {
           ),
           const SizedBox(height: 20),
           SizedBox(
-            height: itemHeight + 100, // rasm + matnlar uchun joy
+            height: itemHeight + 100, // Image + text space
             child: ListView.builder(
-              controller: scrollController,
+              controller: widget.scrollController,
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.only(left: 8),
-              itemCount: genres.length > 6 ? 7 : genres.length,
-              itemExtent: itemWidth + itemMargin,
+              itemCount: genres.length > 6 ? 7 : genres.length, // Limit to 6 + View All
+              itemExtent: itemWidth + itemMargin, // Total width per item including margin
               cacheExtent: 800,
               itemBuilder: (context, index) {
-                final bool itemSelected = isSelected && selectedIndex == index;
+                final bool itemSelected = widget.isSelected && widget.selectedIndex == index;
 
-                // View All kartasi
+                // Show "View All" card as the 7th item if there are more than 6 genres
                 if (genres.length > 6 && index == 6) {
                   return ViewAllCard(
                     width: itemWidth,
@@ -1613,7 +1798,6 @@ class GenresSection extends StatelessWidget {
 
                 final genre = genres[index];
                 return GenreFilmStyleCard(
-                  // Yangi widget - film kartasi kabi
                   genre: genre,
                   itemWidth: itemWidth,
                   itemHeight: itemHeight,
@@ -1626,7 +1810,7 @@ class GenresSection extends StatelessWidget {
                     )) {
                       _showErrorDialog(
                         context,
-                        'Tarmoq aloqasi yo‘q. Iltimos, internet aloqasini tekshiring.',
+                        'Tarmoq aloqasi yo'q. Iltimos, internet aloqasini tekshiring.',
                       );
                     } else {
                       Navigator.push(
@@ -1661,6 +1845,7 @@ class GenresSection extends StatelessWidget {
     );
   }
 }
+
 
 // Janr kartasini film kartasi dizaynida ko‘rsatish uchun yangi widget
 // GenreFilmStyleCard widget - yangilangan versiya
@@ -1856,7 +2041,8 @@ class CategoriesSection extends StatelessWidget {
 }
 
 // Category Section
-class CategorySection extends StatelessWidget {
+// Category Section - Improved with scroll handling
+class CategorySection extends StatefulWidget {
   final dynamic category;
   final List<dynamic> films;
   final bool isLoading;
@@ -1877,16 +2063,68 @@ class CategorySection extends StatelessWidget {
   });
 
   @override
+  State<CategorySection> createState() => _CategorySectionState();
+}
+
+class _CategorySectionState extends State<CategorySection> {
+  int _previousSelectedIndex = -1;
+
+  @override
+  void didUpdateWidget(CategorySection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    
+    // Trigger scroll when selection changes
+    if (widget.isSelected && 
+        widget.selectedItemIndex != _previousSelectedIndex &&
+        widget.scrollController.hasClients) {
+      _previousSelectedIndex = widget.selectedItemIndex;
+      
+      // Schedule scroll after frame to ensure proper positioning
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToSelectedItem();
+      });
+    }
+  }
+
+  // Scroll the selected item into view
+  void _scrollToSelectedItem() {
+    if (!widget.scrollController.hasClients) return;
+
+    final screenWidth = MediaQuery.of(context).size.width;
+    const horizontalPadding = 24.0 * 2;
+    const itemMargin = 8.0;
+    final itemWidth =
+        (screenWidth - horizontalPadding - itemMargin * 5.5) / 5.5;
+    final itemExtent = itemWidth + itemMargin;
+    
+    final viewportWidth = widget.scrollController.position.viewportDimension;
+    
+    // Calculate target offset to center the selected item
+    final targetOffset = (widget.selectedItemIndex * itemExtent) -
+        (viewportWidth / 2) +
+        (itemWidth / 2);
+    
+    final maxOffset = widget.scrollController.position.maxScrollExtent;
+    final clampedOffset = targetOffset.clamp(0.0, maxOffset);
+
+    widget.scrollController.animateTo(
+      clampedOffset,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     const horizontalPadding = 24.0 * 2;
-    const itemMargin = 8.0; // Kartalar orasidagi masofa belgilangan
+    const itemMargin = 8.0; // Spacing between cards
     final itemWidth =
         (screenWidth - horizontalPadding - itemMargin * 5.5) /
-        5.5; // Endi ekranda 5.5 ta karta
+        5.5; // Display ~5.5 cards on screen
     final itemHeight = itemWidth * 1.5;
 
-    // Section balandligini oshiramiz - matnlar uchun ko'proq joy
+    // Increase section height for text
     final sectionHeight = itemHeight + 100;
 
     return Padding(
@@ -1895,7 +2133,7 @@ class CategorySection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            category['title_uz'] ?? 'Noma\'lum',
+            widget.category['title_uz'] ?? 'Noma\'lum',
             style: const TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.bold,
@@ -1906,11 +2144,11 @@ class CategorySection extends StatelessWidget {
           SizedBox(
             height: sectionHeight,
             child:
-                isLoading
+                widget.isLoading
                     ? const Center(
                       child: CircularProgressIndicator(color: Colors.white),
                     )
-                    : films.isEmpty
+                    : widget.films.isEmpty
                     ? const Center(
                       child: Text(
                         "Kontent mavjud emas",
@@ -1919,17 +2157,17 @@ class CategorySection extends StatelessWidget {
                     )
                     : ListView.builder(
                       padding: const EdgeInsets.only(left: 8, right: 24),
-                      controller: scrollController,
+                      controller: widget.scrollController,
                       scrollDirection: Axis.horizontal,
-                      itemCount: films.length + (films.isNotEmpty ? 1 : 0),
+                      itemCount: widget.films.length + (widget.films.isNotEmpty ? 1 : 0),
                       itemExtent:
                           itemWidth +
-                          itemMargin, // Elementlar orasiga masofa qo'shamiz
+                          itemMargin, // Add spacing between elements
                       cacheExtent: 500,
                       itemBuilder: (context, index) {
-                        if (index == films.length) {
+                        if (index == widget.films.length) {
                           final itemSelected =
-                              isSelected && selectedItemIndex == index;
+                              widget.isSelected && widget.selectedItemIndex == index;
                           return ViewAllCard(
                             width: itemWidth,
                             height: itemHeight,
@@ -1938,16 +2176,16 @@ class CategorySection extends StatelessWidget {
                               Navigator.push(
                                 context,
                                 createSlideRoute(
-                                  CategoriesScreen(initialCategory: category),
+                                  CategoriesScreen(initialCategory: widget.category),
                                 ),
                               );
                             },
                           );
                         }
                         final itemSelected =
-                            isSelected && selectedItemIndex == index;
+                            widget.isSelected && widget.selectedItemIndex == index;
                         return FilmItem(
-                          film: films[index],
+                          film: widget.films[index],
                           itemWidth: itemWidth,
                           itemHeight: itemHeight,
                           isSelected: itemSelected,
@@ -1960,6 +2198,7 @@ class CategorySection extends StatelessWidget {
     );
   }
 }
+
 
 // Film Item
 class FilmItem extends StatelessWidget {
