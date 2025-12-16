@@ -441,18 +441,6 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
     await _fetchInitialData();
   }
 
-  Future<void> _refresh() async {
-    final provider = Provider.of<IndexScreenProvider>(context, listen: false);
-    if (!(await _checkInternetConnection())) {
-      _showErrorDialog(
-        'Tarmoq aloqasi yo‘q. Iltimos, internet aloqasini tekshiring.',
-      );
-      return;
-    }
-    provider.reset();
-    await _fetchInitialData();
-  }
-
   Future<List<dynamic>> _processFilms(List<dynamic> newFilms) async {
     return newFilms.take(20).toList();
   }
@@ -655,13 +643,13 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
       currentSection++;
     }
 
-    // Category sections - limit to 7 items (6 + View All)
+    // Category sections - barcha filmlar + View All
     for (var category in provider.categories) {
       final categoryId = category['id'];
       final films = provider.categoryFilms[categoryId] ?? [];
       if (currentSection == sectionIndex) {
         if (films.isEmpty) return 1;
-        return films.length > 6 ? 7 : films.length;
+        return films.length + 1;
       }
       currentSection++;
     }
@@ -748,7 +736,7 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
       final films = provider.categoryFilms[categoryId] ?? [];
       if (currentSection == _selectedSectionIndex && films.isNotEmpty) {
         // Check if View All card is selected
-        if (films.length > 6 && _selectedItemIndex == 6) {
+        if (_selectedItemIndex == films.length) {
           Navigator.push(
             context,
             createSlideRoute(CategoriesScreen(initialCategory: category)),
@@ -797,7 +785,7 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
 
     if (provider.globalError != null) {
       return Scaffold(
-        backgroundColor: const Color(0xFF111827),
+        backgroundColor: Colors.black,
         body: Center(
           child: ErrorScreen(
             errorMessage: provider.globalError!,
@@ -813,32 +801,13 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
         provider.isLoadingGenres ||
         provider.isLoadingCategories) {
       return const Scaffold(
-        backgroundColor: Color(0xFF111827),
+        backgroundColor: Colors.black,
         body: Center(child: CircularProgressIndicator(color: Colors.white)),
       );
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFF111827),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF1F2937),
-        elevation: 2,
-        title: const Text(
-          "Asosiy sahifa",
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _refresh,
-            tooltip: 'Yangilash',
-          ),
-        ],
-      ),
+      backgroundColor: Colors.black,
       body: Focus(
         focusNode: _contentFocusNode,
         onKeyEvent: _handleContentKeyEvent,
@@ -1174,25 +1143,23 @@ class BannerItem extends StatelessWidget {
             isSelected ? Matrix4.identity().scaled(1.05) : Matrix4.identity(),
         margin: const EdgeInsets.symmetric(horizontal: 8.0),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          boxShadow:
-              isSelected
-                  ? [
-                    BoxShadow(
-                      color: Colors.yellow.withOpacity(0.5),
-                      blurRadius: 15,
-                      spreadRadius: 3,
-                    ),
-                  ]
-                  : null,
+          borderRadius: BorderRadius.circular(20), // Increased border-radius
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.5),
+              blurRadius: 20,
+              spreadRadius: 5,
+              offset: const Offset(0, 10),
+            ),
+          ],
           border:
               isSelected ? Border.all(color: Colors.yellow, width: 3) : null,
         ),
-        child: Stack(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: CachedNetworkImage(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Stack(
+            children: [
+              CachedNetworkImage(
                 imageUrl: imageUrl,
                 width: double.infinity,
                 height: 300,
@@ -1214,84 +1181,90 @@ class BannerItem extends StatelessWidget {
                       ),
                     ),
               ),
-            ),
-            Container(
-              width: double.infinity,
-              height: 300,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.black.withValues(alpha: 0.6),
+              Container(
+                width: double.infinity,
+                height: 300,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black.withOpacity(0.5)],
+                    stops: const [0.7, 1.0],
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: 16,
+                left: 24,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title.length > 20
+                          ? '${title.substring(0, 20)}...'
+                          : title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      year,
+                      style: TextStyle(color: Colors.grey[300], fontSize: 16),
+                    ),
                   ],
                 ),
               ),
-            ),
-            Positioned(
-              bottom: 12,
-              left: 24,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title.length > 20 ? '${title.substring(0, 20)}...' : title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
+              Positioned(
+                bottom: 16,
+                right: 24,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          'Kinopoisk: ',
+                          style: TextStyle(
+                            color: Colors.grey[300],
+                            fontSize: 16,
+                          ),
+                        ),
+                        Text(
+                          kinopoiskRating,
+                          style: const TextStyle(
+                            color: Colors.yellow,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  Text(
-                    year,
-                    style: const TextStyle(color: Colors.grey, fontSize: 16),
-                  ),
-                ],
-              ),
-            ),
-            Positioned(
-              bottom: 12,
-              right: 24,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Row(
-                    children: [
-                      const Text(
-                        'Kinopoisk: ',
-                        style: TextStyle(color: Colors.grey, fontSize: 16),
-                      ),
-                      Text(
-                        kinopoiskRating,
-                        style: const TextStyle(
-                          color: Colors.yellow,
-                          fontSize: 16,
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Text(
+                          'IMDb: ',
+                          style: TextStyle(
+                            color: Colors.grey[300],
+                            fontSize: 16,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      const Text(
-                        'IMDb: ',
-                        style: TextStyle(color: Colors.grey, fontSize: 16),
-                      ),
-                      Text(
-                        imdbRating,
-                        style: const TextStyle(
-                          color: Colors.yellow,
-                          fontSize: 16,
+                        Text(
+                          imdbRating,
+                          style: const TextStyle(
+                            color: Colors.yellow,
+                            fontSize: 16,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1321,44 +1294,17 @@ class LatestViewedSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                "Ko‘rishni davom ettirish",
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              FocusScope(
-                child: Builder(
-                  builder: (context) {
-                    return IconButton(
-                      icon: Icon(
-                        Icons.chevron_right,
-                        size: 28,
-                        color:
-                            FocusScope.of(context).hasFocus
-                                ? Colors.yellow
-                                : Colors.white,
-                      ),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          createSlideRoute(const LatestViewedScreen()),
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
+          const Text(
+            "Ko‘rishni davom ettirish",
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
           ),
           const SizedBox(height: 12),
           SizedBox(
-            height: 180,
+            height: 140, // Adjusted for 16:9 aspect ratio
             child: ListView.builder(
               controller: scrollController,
               scrollDirection: Axis.horizontal,
@@ -1366,15 +1312,15 @@ class LatestViewedSection extends StatelessWidget {
                   latestViewed.length > 6
                       ? 7
                       : latestViewed.length, // Limit to 6 + 1 for View All
-              itemExtent: 200,
+              itemExtent: 250, // 16:9 uchun kengroq (250 x 140 ≈ 16:9)
               cacheExtent: 500,
               itemBuilder: (context, index) {
                 // If we have more than 6 items and this is the 7th position, show View All card
                 if (latestViewed.length > 6 && index == 6) {
                   final itemSelected = isSelected && selectedIndex == index;
                   return ViewAllCard(
-                    width: 190,
-                    height: 180,
+                    width: 240,
+                    height: 135, // 240 * 9/16 ≈ 135
                     isSelected: itemSelected,
                     onTap: () {
                       Navigator.push(
@@ -1424,8 +1370,8 @@ class LatestViewedItem extends StatelessWidget {
                     file['thumbnails']['small'] != null &&
                     file['thumbnails']['small']['src'] != null
                 ? file['thumbnails']['small']['src']
-                : file['link'] ?? 'https://placehold.co/320x180')
-            : 'https://placehold.co/320x180';
+                : file['link'] ?? 'https://placehold.co/400x225')
+            : 'https://placehold.co/400x225';
     final filmId = film['id'] ?? 0;
     final viewedTime = second['time'] ?? 0;
     final playbackTime = film['playback_time'] ?? 1;
@@ -1443,71 +1389,85 @@ class LatestViewedItem extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         transform:
             isSelected ? (Matrix4.identity()..scale(1.05)) : Matrix4.identity(),
-        width: 190,
+        width: 240,
+        height: 135,
         margin: const EdgeInsets.only(right: 16),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          image: DecorationImage(
-            image: CachedNetworkImageProvider(
-              imageUrl,
-              cacheManager: customCacheManager,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.4),
+              blurRadius: 15,
+              spreadRadius: 2,
+              offset: const Offset(0, 8),
             ),
-            fit: BoxFit.cover,
-          ),
-          boxShadow:
-              isSelected
-                  ? [
-                    BoxShadow(
-                      color: Colors.yellow.withOpacity(0.5),
-                      blurRadius: 15,
-                      spreadRadius: 3,
-                    ),
-                  ]
-                  : null,
+          ],
           border:
               isSelected ? Border.all(color: Colors.yellow, width: 3) : null,
         ),
-        child: Stack(
-          children: [
-            Positioned(
-              bottom: 12,
-              right: 12,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.withOpacity(0.7),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      viewedTimeString,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: 180,
-                    child: LinearProgressIndicator(
-                      value: progress.clamp(0.0, 1.0),
-                      backgroundColor: Colors.grey[400],
-                      valueColor: const AlwaysStoppedAnimation<Color>(
-                        Colors.yellow,
-                      ),
-                    ),
-                  ),
-                ],
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Stack(
+            children: [
+              CachedNetworkImage(
+                imageUrl: imageUrl,
+                width: double.infinity,
+                height: double.infinity,
+                fit: BoxFit.cover,
+                cacheManager: customCacheManager,
               ),
-            ),
-          ],
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black.withOpacity(0.5)],
+                    stops: const [0.7, 1.0],
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: 12,
+                right: 12,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        viewedTimeString,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: 220,
+                      child: LinearProgressIndicator(
+                        value: progress.clamp(0.0, 1.0),
+                        backgroundColor: Colors.grey[800],
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          Colors.yellow,
+                        ),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isSelected) Container(color: Colors.white.withOpacity(0.1)),
+            ],
+          ),
         ),
       ),
     );
@@ -1553,7 +1513,7 @@ class RecommendedFilmsSection extends StatelessWidget {
   }
 }
 
-// Genres Section
+// Genres Section - YANGI VERSIYA
 class GenresSection extends StatelessWidget {
   final VoidCallback onRetry;
   final bool isSelected;
@@ -1601,86 +1561,68 @@ class GenresSection extends StatelessWidget {
         ),
       );
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                "Janrlar",
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              FocusScope(
-                child: Builder(
-                  builder: (context) {
-                    return IconButton(
-                      icon: Icon(
-                        Icons.chevron_right,
-                        size: 28,
-                        color:
-                            FocusScope.of(context).hasFocus
-                                ? Colors.yellow
-                                : Colors.white,
-                      ),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          createSlideRoute(const GenresScreen()),
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
+
+    // Ekranda ~3 ta karta ko‘rinishi uchun hisob-kitob
+    final screenWidth = MediaQuery.of(context).size.width;
+    const horizontalPadding = 24.0 * 2; // left + right
+    const itemMargin = 16.0; // kartalar orasidagi bo‘shliq
+    final availableWidth = screenWidth - horizontalPadding;
+    final itemWidth = (availableWidth - itemMargin * 2) / 3; // ~3 ta karta
+    final itemHeight = itemWidth * (9 / 16); // 16:9 nisbat
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Janrlar",
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
           ),
-        ),
-        SizedBox(
-          height: 250,
-          child: ListView.builder(
-            controller: scrollController,
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            itemCount:
-                genres.length > 6
-                    ? 7
-                    : genres.length, // Limit to 6 + 1 for View All
-            cacheExtent: 500,
-            itemBuilder: (context, index) {
-              // If we have more than 6 items and this is the 7th position, show View All card
-              if (genres.length > 6 && index == 6) {
-                final itemSelected = isSelected && selectedIndex == index;
-                return ViewAllCard(
-                  width: 350,
-                  height: 250,
-                  isSelected: itemSelected,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      createSlideRoute(const GenresScreen()),
-                    );
-                  },
-                );
-              }
-              final genre = genres[index];
-              final itemSelected = isSelected && selectedIndex == index;
-              return Padding(
-                padding: const EdgeInsets.only(right: 16),
-                child: GenreCard(
+          const SizedBox(height: 20),
+          SizedBox(
+            height: itemHeight + 100, // rasm + matnlar uchun joy
+            child: ListView.builder(
+              controller: scrollController,
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.only(left: 8),
+              itemCount: genres.length > 6 ? 7 : genres.length,
+              itemExtent: itemWidth + itemMargin,
+              cacheExtent: 800,
+              itemBuilder: (context, index) {
+                final bool itemSelected = isSelected && selectedIndex == index;
+
+                // View All kartasi
+                if (genres.length > 6 && index == 6) {
+                  return ViewAllCard(
+                    width: itemWidth,
+                    height: itemHeight,
+                    isSelected: itemSelected,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        createSlideRoute(const GenresScreen()),
+                      );
+                    },
+                  );
+                }
+
+                final genre = genres[index];
+                return GenreFilmStyleCard(
+                  // Yangi widget - film kartasi kabi
                   genre: genre,
+                  itemWidth: itemWidth,
+                  itemHeight: itemHeight,
                   isSelected: itemSelected,
                   onTap: () async {
                     final connectivityResult =
                         await Connectivity().checkConnectivity();
                     if (connectivityResult.every(
-                      (result) => result == ConnectivityResult.none,
+                      (r) => r == ConnectivityResult.none,
                     )) {
                       _showErrorDialog(
                         context,
@@ -1693,12 +1635,12 @@ class GenresSection extends StatelessWidget {
                       );
                     }
                   },
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -1716,6 +1658,139 @@ class GenresSection extends StatelessWidget {
               ),
             ],
           ),
+    );
+  }
+}
+
+// Janr kartasini film kartasi dizaynida ko‘rsatish uchun yangi widget
+// GenreFilmStyleCard widget - yangilangan versiya
+class GenreFilmStyleCard extends StatelessWidget {
+  final Map<String, dynamic> genre;
+  final double itemWidth;
+  final double itemHeight;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const GenreFilmStyleCard({
+    super.key,
+    required this.genre,
+    required this.itemWidth,
+    required this.itemHeight,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final photo = genre['photo'] as Map<String, dynamic>?;
+    final thumbnails = photo?['thumbnails'] as Map<String, dynamic>?;
+    final smallThumb = thumbnails?['small'] as Map<String, dynamic>?;
+    final imageUrl =
+        smallThumb?['src'] ?? photo?['link'] ?? 'https://placehold.co/400x225';
+
+    final name = genre['name_uz'] ?? 'Noma\'lum';
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.only(right: 3),
+        child: SizedBox(
+          width: itemWidth,
+          height: itemHeight + 16,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                transform: Matrix4.identity()..scale(isSelected ? 1.05 : 1.0),
+                transformAlignment: Alignment.center,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.4),
+                      blurRadius: 15,
+                      spreadRadius: 2,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                  border:
+                      isSelected
+                          ? Border.all(
+                            color: const Color.fromARGB(255, 255, 59, 108),
+                            width: 2,
+                          )
+                          : null,
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: Stack(
+                    children: [
+                      CachedNetworkImage(
+                        imageUrl: imageUrl,
+                        width: itemWidth,
+                        height: itemHeight,
+                        fit: BoxFit.cover,
+                        cacheManager: customCacheManager,
+                        placeholder:
+                            (context, url) =>
+                                Container(color: Colors.grey[800]),
+                        errorWidget:
+                            (context, url, error) => Container(
+                              color: Colors.grey[800],
+                              child: const Icon(
+                                Icons.broken_image,
+                                color: Colors.grey,
+                              ),
+                            ),
+                      ),
+                      // Gradient overlay
+                      Container(
+                        width: itemWidth,
+                        height: itemHeight,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(20),
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              Colors.black.withOpacity(0.7),
+                            ],
+                            stops: const [0.5, 1.0],
+                          ),
+                        ),
+                      ),
+                      // Janr nomi chap pastki burchakda
+                      Positioned(
+                        bottom: 12,
+                        left: 12,
+                        right: 12,
+                        child: Text(
+                          name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                      if (isSelected)
+                        Container(
+                          width: itemWidth,
+                          height: itemHeight,
+                          color: Colors.white.withOpacity(0.12),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1805,54 +1880,29 @@ class CategorySection extends StatelessWidget {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     const horizontalPadding = 24.0 * 2;
-    const itemMargin = 16.0;
-    final itemWidth = (screenWidth - horizontalPadding - itemMargin) / 2;
-    final itemHeight = itemWidth * 1.6;
-    final sectionHeight = itemHeight + 60;
+    const itemMargin = 8.0; // Kartalar orasidagi masofa belgilangan
+    final itemWidth =
+        (screenWidth - horizontalPadding - itemMargin * 5.5) /
+        5.5; // Endi ekranda 5.5 ta karta
+    final itemHeight = itemWidth * 1.5;
+
+    // Section balandligini oshiramiz - matnlar uchun ko'proq joy
+    final sectionHeight = itemHeight + 100;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 24.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                category['title_uz'] ?? 'Noma’lum',
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              FocusScope(
-                child: Builder(
-                  builder: (context) {
-                    return IconButton(
-                      icon: Icon(
-                        Icons.chevron_right,
-                        size: 28,
-                        color:
-                            FocusScope.of(context).hasFocus
-                                ? Colors.yellow
-                                : Colors.white,
-                      ),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          createSlideRoute(
-                            CategoriesScreen(initialCategory: category),
-                          ),
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
+          Text(
+            category['title_uz'] ?? 'Noma\'lum',
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 20),
           SizedBox(
             height: sectionHeight,
             child:
@@ -1868,17 +1918,16 @@ class CategorySection extends StatelessWidget {
                       ),
                     )
                     : ListView.builder(
+                      padding: const EdgeInsets.only(left: 8, right: 24),
                       controller: scrollController,
                       scrollDirection: Axis.horizontal,
-                      itemCount:
-                          films.length > 6
-                              ? 7
-                              : films.length, // Limit to 6 + 1 for View All
-                      itemExtent: itemWidth + itemMargin,
+                      itemCount: films.length + (films.isNotEmpty ? 1 : 0),
+                      itemExtent:
+                          itemWidth +
+                          itemMargin, // Elementlar orasiga masofa qo'shamiz
                       cacheExtent: 500,
                       itemBuilder: (context, index) {
-                        // If we have more than 6 items and this is the 7th position, show View All card
-                        if (films.length > 6 && index == 6) {
+                        if (index == films.length) {
                           final itemSelected =
                               isSelected && selectedItemIndex == index;
                           return ViewAllCard(
@@ -1938,7 +1987,7 @@ class FilmItem extends StatelessWidget {
                 ? files[0]['thumbnails']['small']['src']
                 : files[0]['link'] ?? 'https://placehold.co/320x180')
             : 'https://placehold.co/320x180';
-    final title = film['name_uz'] ?? 'Noma’lum';
+    final title = film['name_uz'] ?? 'Noma\'lum';
     final year = film['year']?.toString() ?? '';
     final genres = film['genres'] ?? [];
     final genreName = genres.isNotEmpty ? genres[0]['name_uz'] ?? '' : '';
@@ -1948,58 +1997,95 @@ class FilmItem extends StatelessWidget {
       onTap: () {
         Navigator.push(context, createSlideRoute(FilmScreen(filmId: filmId)));
       },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        transform:
-            isSelected ? (Matrix4.identity()..scale(1.05)) : Matrix4.identity(),
-        margin: const EdgeInsets.only(right: 16),
-        width: itemWidth,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          boxShadow:
-              isSelected
-                  ? [
-                    BoxShadow(
-                      color: Colors.yellow.withOpacity(0.5),
-                      blurRadius: 15,
-                      spreadRadius: 3,
-                    ),
-                  ]
-                  : null,
-          border:
-              isSelected ? Border.all(color: Colors.yellow, width: 3) : null,
-        ),
+      child: Padding(
+        padding: const EdgeInsets.only(
+          right: 3,
+        ), // 4 → 3 px ga o'zgartirdik (yoki 2 kiritishingiz mumkin)
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              height: itemHeight,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                image: DecorationImage(
-                  image: CachedNetworkImageProvider(
-                    imageUrl,
-                    cacheManager: customCacheManager,
+            // Kartani alohida SizedBox ichiga o'rab, faqat uni kattalashtiramiz
+            SizedBox(
+              width: itemWidth,
+              height: itemHeight + 16, // Border uchun qo'shimcha joy
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    transform:
+                        Matrix4.identity()..scale(isSelected ? 1.05 : 1.0),
+                    transformAlignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.4),
+                          blurRadius: 15,
+                          spreadRadius: 2,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                      border:
+                          isSelected
+                              ? Border.all(
+                                color: const Color.fromARGB(255, 255, 59, 108),
+                                width: 2,
+                              )
+                              : null,
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: Stack(
+                        children: [
+                          CachedNetworkImage(
+                            imageUrl: imageUrl,
+                            width: itemWidth,
+                            height: itemHeight,
+                            fit: BoxFit.cover,
+                            cacheManager: customCacheManager,
+                          ),
+                          if (isSelected)
+                            Container(
+                              width: itemWidth,
+                              height: itemHeight,
+                              color: Colors.white.withOpacity(0.12),
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
-                  fit: BoxFit.cover,
+                ],
+              ),
+            ),
+
+            // Matnlar qimirlamaydi, chunki ular SizedBox tashqarisida
+            const SizedBox(height: 12),
+
+            SizedBox(
+              width: itemWidth,
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
                 ),
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-              ),
-            ),
+
             const SizedBox(height: 4),
-            Text(
-              "$year · $genreName",
-              style: const TextStyle(fontSize: 14, color: Colors.grey),
+
+            SizedBox(
+              width: itemWidth,
+              child: Text(
+                "$year · $genreName",
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
             ),
           ],
         ),
@@ -2040,25 +2126,23 @@ class GenreCard extends StatelessWidget {
         transform:
             isSelected ? (Matrix4.identity()..scale(1.05)) : Matrix4.identity(),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          boxShadow:
-              isSelected
-                  ? [
-                    BoxShadow(
-                      color: Colors.yellow.withOpacity(0.5),
-                      blurRadius: 15,
-                      spreadRadius: 3,
-                    ),
-                  ]
-                  : null,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.4),
+              blurRadius: 15,
+              spreadRadius: 2,
+              offset: const Offset(0, 8),
+            ),
+          ],
           border:
               isSelected ? Border.all(color: Colors.yellow, width: 3) : null,
         ),
-        child: Stack(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: CachedNetworkImage(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Stack(
+            children: [
+              CachedNetworkImage(
                 imageUrl: imageUrl,
                 width: 350,
                 height: 250,
@@ -2080,36 +2164,34 @@ class GenreCard extends StatelessWidget {
                       ),
                     ),
               ),
-            ),
-            Container(
-              width: 350,
-              height: 250,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.black.withValues(alpha: 0.6),
-                  ],
+              Container(
+                width: 350,
+                height: 250,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black.withOpacity(0.5)],
+                    stops: const [0.7, 1.0],
+                  ),
                 ),
               ),
-            ),
-            Positioned(
-              bottom: 16,
-              left: 24,
-              child: Text(
-                name,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
+              Positioned(
+                bottom: 16,
+                left: 24,
+                child: Text(
+                  name,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
-                overflow: TextOverflow.ellipsis,
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -2135,52 +2217,101 @@ class ViewAllCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        transform:
-            isSelected ? (Matrix4.identity()..scale(1.05)) : Matrix4.identity(),
-        margin: const EdgeInsets.only(right: 16),
-        width: width,
-        height: height,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          color: Colors.grey[800]?.withOpacity(0.5),
-          border: Border.all(
-            color: isSelected ? Colors.yellow : Colors.grey[700]!,
-            width: isSelected ? 3 : 1,
-          ),
-          boxShadow:
-              isSelected
-                  ? [
-                    BoxShadow(
-                      color: Colors.yellow.withOpacity(0.5),
-                      blurRadius: 15,
-                      spreadRadius: 3,
+      child: Padding(
+        padding: const EdgeInsets.only(right: 3),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: width,
+              height: height + 16, // Border uchun qo'shimcha joy
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    transform:
+                        Matrix4.identity()..scale(isSelected ? 1.05 : 1.0),
+                    transformAlignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.4),
+                          blurRadius: 15,
+                          spreadRadius: 2,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                      border:
+                          isSelected
+                              ? Border.all(
+                                color: const Color.fromARGB(255, 255, 59, 108),
+                                width: 2,
+                              )
+                              : null,
                     ),
-                  ]
-                  : null,
-        ),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.arrow_forward,
-                size: 48,
-                color: isSelected ? Colors.yellow : Colors.white,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: Stack(
+                        children: [
+                          Container(
+                            color: Colors.black.withOpacity(0.6),
+                            width: width,
+                            height: height,
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.arrow_forward,
+                                    size: 48,
+                                    color:
+                                        isSelected
+                                            ? const Color.fromARGB(
+                                              255,
+                                              255,
+                                              59,
+                                              108,
+                                            )
+                                            : Colors.white,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    "Barchasini ko'rish",
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color:
+                                          isSelected
+                                              ? const Color.fromARGB(
+                                                255,
+                                                255,
+                                                59,
+                                                108,
+                                              )
+                                              : Colors.white,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          if (isSelected)
+                            Container(
+                              width: width,
+                              height: height,
+                              color: Colors.white.withOpacity(0.12),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                "Barchasini ko'rish",
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: isSelected ? Colors.yellow : Colors.white,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
