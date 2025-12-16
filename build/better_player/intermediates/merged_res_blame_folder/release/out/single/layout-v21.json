@@ -1,0 +1,18 @@
+[
+    {
+        "merged": "com.jhomlala.better_player-merged_res-33:/layout-v21/notification_template_icon_group.xml",
+        "source": "com.jhomlala.better_player-core-1.13.1-22:/layout-v21/notification_template_icon_group.xml"
+    },
+    {
+        "merged": "com.jhomlala.better_player-merged_res-33:/layout-v21/notification_action.xml",
+        "source": "com.jhomlala.better_player-core-1.13.1-22:/layout-v21/notification_action.xml"
+    },
+    {
+        "merged": "com.jhomlala.better_player-merged_res-33:/layout-v21/notification_template_custom_big.xml",
+        "source": "com.jhomlala.better_player-core-1.13.1-22:/layout-v21/notification_template_custom_big.xml"
+    },
+    {
+        "merged": "com.jhomlala.better_player-merged_res-33:/layout-v21/notification_action_tombstone.xml",
+        "source": "com.jhomlala.better_player-core-1.13.1-22:/layout-v21/notification_action_tombstone.xml"
+    }
+]

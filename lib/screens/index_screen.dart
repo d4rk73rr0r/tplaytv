@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
@@ -198,9 +199,35 @@ class IndexScreenContent extends StatefulWidget {
 class _IndexScreenContentState extends State<IndexScreenContent> {
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
+  // Focus nodes for TV remote control
+  final FocusNode _contentFocusNode = FocusNode();
+  int _selectedSectionIndex = 0;
+  int _selectedItemIndex = 0;
+
+  // Scroll controller for vertical scrolling
+  late ScrollController _scrollController;
+
+  // Horizontal scroll controllers for each section
+  final Map<int, ScrollController> _horizontalScrollControllers = {};
+
+  // Global keys for sections to enable scrolling
+  final GlobalKey _bannerKey = GlobalKey();
+  final GlobalKey _latestViewedKey = GlobalKey();
+  final GlobalKey _recommendedKey = GlobalKey();
+  final GlobalKey _genresKey = GlobalKey();
+  // Dynamic keys for category sections
+  final Map<int, GlobalKey> _categoryKeys = {};
+
   @override
   void initState() {
     super.initState();
+
+    _scrollController = ScrollController();
+
+    // Request focus after frame is built
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _contentFocusNode.requestFocus();
+    });
     _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
       List<ConnectivityResult> results,
     ) {
@@ -226,6 +253,12 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
   @override
   void dispose() {
     _connectivitySubscription?.cancel();
+    _contentFocusNode.dispose();
+    _scrollController.dispose();
+    // Dispose horizontal scroll controllers
+    for (final controller in _horizontalScrollControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -424,6 +457,340 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
     return newFilms.take(20).toList();
   }
 
+  // Scroll to the selected section
+  void _scrollToSelectedSection() {
+    GlobalKey? key;
+    int currentSection = 0;
+    final provider = Provider.of<IndexScreenProvider>(context, listen: false);
+
+    if (provider.banners.isNotEmpty) {
+      if (currentSection == _selectedSectionIndex) key = _bannerKey;
+      currentSection++;
+    }
+
+    if (provider.latestViewed.isNotEmpty) {
+      if (currentSection == _selectedSectionIndex) key = _latestViewedKey;
+      currentSection++;
+    }
+
+    if (provider.recommendedFilms.isNotEmpty) {
+      if (currentSection == _selectedSectionIndex) key = _recommendedKey;
+      currentSection++;
+    }
+
+    if (provider.genresPreview.isNotEmpty) {
+      if (currentSection == _selectedSectionIndex) key = _genresKey;
+      currentSection++;
+    }
+
+    // For category sections, check if we have a key for this specific category
+    if (provider.categories.isNotEmpty &&
+        _selectedSectionIndex >= currentSection &&
+        _selectedSectionIndex < currentSection + provider.categories.length) {
+      final categoryIndex = _selectedSectionIndex - currentSection;
+      // Create key if it doesn't exist
+      if (!_categoryKeys.containsKey(categoryIndex)) {
+        _categoryKeys[categoryIndex] = GlobalKey();
+      }
+      key = _categoryKeys[categoryIndex];
+    }
+
+    if (key != null && key.currentContext != null) {
+      Scrollable.ensureVisible(
+        key.currentContext!,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+        alignment: 0.0,
+      );
+    }
+  }
+
+  // Scroll horizontally to the currently selected item
+  void _scrollToCurrentItem() {
+    final controller = _horizontalScrollControllers[_selectedSectionIndex];
+    if (controller == null || !controller.hasClients) return;
+
+    // Approximate item width - will vary by section but this is a good average
+    const double itemWidth = 200.0;
+    final double viewportWidth = controller.position.viewportDimension;
+
+    // Center the selected item in the viewport
+    final double targetOffset =
+        (_selectedItemIndex * itemWidth) -
+        (viewportWidth / 2) +
+        (itemWidth / 2);
+
+    final double maxOffset = controller.position.maxScrollExtent;
+    final double clampedOffset = targetOffset.clamp(0.0, maxOffset);
+
+    controller.animateTo(
+      clampedOffset,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
+  }
+
+  // Get or create a scroll controller for a section
+  ScrollController _getScrollControllerForSection(int sectionIndex) {
+    if (!_horizontalScrollControllers.containsKey(sectionIndex)) {
+      _horizontalScrollControllers[sectionIndex] = ScrollController();
+    }
+    return _horizontalScrollControllers[sectionIndex]!;
+  }
+
+  // TV Remote control key event handler
+  KeyEventResult _handleContentKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+    final provider = Provider.of<IndexScreenProvider>(context, listen: false);
+
+    // Count available sections
+    int sectionCount = 0;
+    if (provider.banners.isNotEmpty) sectionCount++;
+    if (provider.latestViewed.isNotEmpty) sectionCount++;
+    if (provider.recommendedFilms.isNotEmpty) sectionCount++;
+    if (provider.genresPreview.isNotEmpty) sectionCount++;
+    if (provider.categories.isNotEmpty)
+      sectionCount += provider.categories.length;
+
+    if (sectionCount == 0) return KeyEventResult.ignored;
+
+    // Handle arrow down - move to next section
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      setState(() {
+        if (_selectedSectionIndex < sectionCount - 1) {
+          _selectedSectionIndex++;
+          _selectedItemIndex = 0;
+        }
+      });
+      _scrollToSelectedSection();
+      return KeyEventResult.handled;
+    }
+
+    // Handle arrow up - move to previous section
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      setState(() {
+        if (_selectedSectionIndex > 0) {
+          _selectedSectionIndex--;
+          _selectedItemIndex = 0;
+        }
+      });
+      _scrollToSelectedSection();
+      return KeyEventResult.handled;
+    }
+
+    // Handle arrow right - move to next item in section
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      setState(() {
+        // Get the current section's item count
+        int maxItems = _getMaxItemsForSection(_selectedSectionIndex, provider);
+        if (_selectedItemIndex < maxItems - 1) {
+          _selectedItemIndex++;
+        }
+      });
+      _scrollToCurrentItem();
+      return KeyEventResult.handled;
+    }
+
+    // Handle arrow left - move to previous item in section or let parent handle
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      if (_selectedItemIndex > 0) {
+        setState(() {
+          _selectedItemIndex--;
+        });
+        _scrollToCurrentItem();
+        return KeyEventResult.handled;
+      } else {
+        // At the first item - let parent handle to open sidebar menu
+        return KeyEventResult.ignored;
+      }
+    }
+
+    // Handle select/enter - activate selected item
+    if (event.logicalKey == LogicalKeyboardKey.select ||
+        event.logicalKey == LogicalKeyboardKey.enter) {
+      _activateSelectedItem(provider);
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
+  int _getMaxItemsForSection(int sectionIndex, IndexScreenProvider provider) {
+    int currentSection = 0;
+
+    // Banner section
+    if (provider.banners.isNotEmpty) {
+      if (currentSection == sectionIndex) return provider.banners.length;
+      currentSection++;
+    }
+
+    // Latest viewed section - limit to 7 items (6 + View All)
+    if (provider.latestViewed.isNotEmpty) {
+      if (currentSection == sectionIndex) {
+        return provider.latestViewed.length > 6
+            ? 7
+            : provider.latestViewed.length;
+      }
+      currentSection++;
+    }
+
+    // Recommended section - limit to 7 items (6 + View All)
+    if (provider.recommendedFilms.isNotEmpty) {
+      if (currentSection == sectionIndex) {
+        return provider.recommendedFilms.length > 6
+            ? 7
+            : provider.recommendedFilms.length;
+      }
+      currentSection++;
+    }
+
+    // Genres section - limit to 7 items (6 + View All)
+    if (provider.genresPreview.isNotEmpty) {
+      if (currentSection == sectionIndex) {
+        return provider.genresPreview.length > 6
+            ? 7
+            : provider.genresPreview.length;
+      }
+      currentSection++;
+    }
+
+    // Category sections - limit to 7 items (6 + View All)
+    for (var category in provider.categories) {
+      final categoryId = category['id'];
+      final films = provider.categoryFilms[categoryId] ?? [];
+      if (currentSection == sectionIndex) {
+        if (films.isEmpty) return 1;
+        return films.length > 6 ? 7 : films.length;
+      }
+      currentSection++;
+    }
+
+    return 1;
+  }
+
+  void _activateSelectedItem(IndexScreenProvider provider) {
+    int currentSection = 0;
+
+    // Banner section
+    if (provider.banners.isNotEmpty) {
+      if (currentSection == _selectedSectionIndex) {
+        final banner = provider.banners[_selectedItemIndex];
+        final film = banner['film'] as Map<String, dynamic>? ?? {};
+        final filmId = film['id'] ?? 0;
+        if (filmId != 0) {
+          Navigator.push(context, createSlideRoute(FilmScreen(filmId: filmId)));
+        }
+        return;
+      }
+      currentSection++;
+    }
+
+    // Latest viewed section
+    if (provider.latestViewed.isNotEmpty) {
+      if (currentSection == _selectedSectionIndex) {
+        // Check if View All card is selected
+        if (provider.latestViewed.length > 6 && _selectedItemIndex == 6) {
+          Navigator.push(context, createSlideRoute(const LatestViewedScreen()));
+          return;
+        }
+        final item = provider.latestViewed[_selectedItemIndex];
+        final film = item['film'] as Map<String, dynamic>? ?? {};
+        final filmId = film['id'] ?? 0;
+        if (filmId != 0) {
+          Navigator.push(context, createSlideRoute(FilmScreen(filmId: filmId)));
+        }
+        return;
+      }
+      currentSection++;
+    }
+
+    // Recommended section
+    if (provider.recommendedFilms.isNotEmpty) {
+      if (currentSection == _selectedSectionIndex) {
+        // Check if View All card is selected
+        if (provider.recommendedFilms.length > 6 && _selectedItemIndex == 6) {
+          Navigator.push(
+            context,
+            createSlideRoute(const RecommendedFilmsScreen()),
+          );
+          return;
+        }
+        final film = provider.recommendedFilms[_selectedItemIndex];
+        final filmId = film['id'];
+        Navigator.push(context, createSlideRoute(FilmScreen(filmId: filmId)));
+        return;
+      }
+      currentSection++;
+    }
+
+    // Genres section
+    if (provider.genresPreview.isNotEmpty) {
+      if (currentSection == _selectedSectionIndex) {
+        // Check if View All card is selected
+        if (provider.genresPreview.length > 6 && _selectedItemIndex == 6) {
+          Navigator.push(context, createSlideRoute(const GenresScreen()));
+          return;
+        }
+        final genre = provider.genresPreview[_selectedItemIndex];
+        Navigator.push(
+          context,
+          createSlideRoute(GenresFilmsScreen(genre: genre)),
+        );
+        return;
+      }
+      currentSection++;
+    }
+
+    // Category sections
+    for (var category in provider.categories) {
+      final categoryId = category['id'];
+      final films = provider.categoryFilms[categoryId] ?? [];
+      if (currentSection == _selectedSectionIndex && films.isNotEmpty) {
+        // Check if View All card is selected
+        if (films.length > 6 && _selectedItemIndex == 6) {
+          Navigator.push(
+            context,
+            createSlideRoute(CategoriesScreen(initialCategory: category)),
+          );
+          return;
+        }
+        final film = films[_selectedItemIndex];
+        final filmId = film['id'];
+        Navigator.push(context, createSlideRoute(FilmScreen(filmId: filmId)));
+        return;
+      }
+      currentSection++;
+    }
+  }
+
+  int _getRecommendedSectionIndex() {
+    final provider = Provider.of<IndexScreenProvider>(context, listen: false);
+    int index = 0;
+    if (provider.banners.isNotEmpty) index++;
+    if (provider.latestViewed.isNotEmpty) index++;
+    return index;
+  }
+
+  int _getGenresSectionIndex() {
+    final provider = Provider.of<IndexScreenProvider>(context, listen: false);
+    int index = 0;
+    if (provider.banners.isNotEmpty) index++;
+    if (provider.latestViewed.isNotEmpty) index++;
+    if (provider.recommendedFilms.isNotEmpty) index++;
+    return index;
+  }
+
+  int _getCategoriesSectionIndex() {
+    final provider = Provider.of<IndexScreenProvider>(context, listen: false);
+    int index = 0;
+    if (provider.banners.isNotEmpty) index++;
+    if (provider.latestViewed.isNotEmpty) index++;
+    if (provider.recommendedFilms.isNotEmpty) index++;
+    if (provider.genresPreview.isNotEmpty) index++;
+    return index;
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<IndexScreenProvider>(context);
@@ -472,29 +839,79 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
           ),
         ],
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              provider.banners.isNotEmpty
-                  ? const BannerCarousel()
-                  : const SizedBox(
-                    height: 300,
-                    child: Center(
-                      child: Text(
-                        'Bannerlar mavjud emas',
-                        style: TextStyle(fontSize: 20, color: Colors.white),
+      body: Focus(
+        focusNode: _contentFocusNode,
+        onKeyEvent: _handleContentKeyEvent,
+        child: SafeArea(
+          child: SingleChildScrollView(
+            controller: _scrollController,
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                provider.banners.isNotEmpty
+                    ? Container(
+                      key: _bannerKey,
+                      child: BannerCarousel(
+                        isSelected: _selectedSectionIndex == 0,
+                        selectedIndex: _selectedItemIndex,
+                      ),
+                    )
+                    : const SizedBox(
+                      height: 300,
+                      child: Center(
+                        child: Text(
+                          'Bannerlar mavjud emas',
+                          style: TextStyle(fontSize: 20, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                if (provider.latestViewed.isNotEmpty)
+                  Container(
+                    key: _latestViewedKey,
+                    child: LatestViewedSection(
+                      isSelected:
+                          _selectedSectionIndex ==
+                          (provider.banners.isNotEmpty ? 1 : 0),
+                      selectedIndex: _selectedItemIndex,
+                      scrollController: _getScrollControllerForSection(
+                        provider.banners.isNotEmpty ? 1 : 0,
                       ),
                     ),
                   ),
-              if (provider.latestViewed.isNotEmpty) const LatestViewedSection(),
-              const RecommendedFilmsSection(),
-              GenresSection(onRetry: _onRetry),
-              const CategoriesSection(),
-              const SizedBox(height: 100),
-            ],
+                Container(
+                  key: _recommendedKey,
+                  child: RecommendedFilmsSection(
+                    isSelected:
+                        _selectedSectionIndex == _getRecommendedSectionIndex(),
+                    selectedIndex: _selectedItemIndex,
+                    scrollController: _getScrollControllerForSection(
+                      _getRecommendedSectionIndex(),
+                    ),
+                  ),
+                ),
+                Container(
+                  key: _genresKey,
+                  child: GenresSection(
+                    onRetry: _onRetry,
+                    isSelected:
+                        _selectedSectionIndex == _getGenresSectionIndex(),
+                    selectedIndex: _selectedItemIndex,
+                    scrollController: _getScrollControllerForSection(
+                      _getGenresSectionIndex(),
+                    ),
+                  ),
+                ),
+                CategoriesSection(
+                  baseSectionIndex: _getCategoriesSectionIndex(),
+                  selectedSectionIndex: _selectedSectionIndex,
+                  selectedItemIndex: _selectedItemIndex,
+                  categoryKeys: _categoryKeys,
+                  getScrollController: _getScrollControllerForSection,
+                ),
+                const SizedBox(height: 100),
+              ],
+            ),
           ),
         ),
       ),
@@ -559,7 +976,14 @@ class ErrorScreen extends StatelessWidget {
 
 // BannerCarousel
 class BannerCarousel extends StatefulWidget {
-  const BannerCarousel({super.key});
+  final bool isSelected;
+  final int selectedIndex;
+
+  const BannerCarousel({
+    super.key,
+    this.isSelected = false,
+    this.selectedIndex = 0,
+  });
 
   @override
   State<BannerCarousel> createState() => _BannerCarouselState();
@@ -591,6 +1015,15 @@ class _BannerCarouselState extends State<BannerCarousel>
   }
 
   @override
+  void didUpdateWidget(BannerCarousel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Sync carousel with remote control selection
+    if (widget.isSelected && widget.selectedIndex != _currentIndex) {
+      _carouselController.animateToPage(widget.selectedIndex);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final provider = Provider.of<IndexScreenProvider>(context);
     final banners = provider.banners;
@@ -615,10 +1048,14 @@ class _BannerCarouselState extends State<BannerCarousel>
             },
           ),
           items:
-              banners.map((banner) {
+              banners.asMap().entries.map((entry) {
+                final index = entry.key;
+                final banner = entry.value;
+                final isSelected =
+                    widget.isSelected && widget.selectedIndex == index;
                 return Builder(
                   builder: (BuildContext context) {
-                    return BannerItem(banner: banner);
+                    return BannerItem(banner: banner, isSelected: isSelected);
                   },
                 );
               }).toList(),
@@ -709,8 +1146,9 @@ class CircleProgressPainter extends CustomPainter {
 // Banner Item
 class BannerItem extends StatelessWidget {
   final dynamic banner;
+  final bool isSelected;
 
-  const BannerItem({super.key, required this.banner});
+  const BannerItem({super.key, required this.banner, this.isSelected = false});
 
   @override
   Widget build(BuildContext context) {
@@ -726,162 +1164,135 @@ class BannerItem extends StatelessWidget {
     final imdbRating = film['imdb_rating']?.toString() ?? 'N/A';
     final filmId = film['id'] ?? 0;
 
-    return FocusScope(
-      child: Builder(
-        builder: (context) {
-          final focusNode = FocusNode();
-          return GestureDetector(
-            onTap: () {
-              Navigator.push(
-                context,
-                createSlideRoute(FilmScreen(filmId: filmId)),
-              );
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              transform:
-                  FocusScope.of(context).hasFocus
-                      ? Matrix4.identity().scaled(1.05)
-                      : Matrix4.identity(),
-              margin: const EdgeInsets.symmetric(horizontal: 8.0),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                boxShadow:
-                    FocusScope.of(context).hasFocus
-                        ? [
-                          BoxShadow(
-                            color: Colors.yellow.withOpacity(0.3),
-                            blurRadius: 8,
-                          ),
-                        ]
-                        : null,
-                border:
-                    FocusScope.of(context).hasFocus
-                        ? Border.all(color: Colors.yellow, width: 2)
-                        : null,
-              ),
-              child: Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: CachedNetworkImage(
-                      imageUrl: imageUrl,
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(context, createSlideRoute(FilmScreen(filmId: filmId)));
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        transform:
+            isSelected ? Matrix4.identity().scaled(1.05) : Matrix4.identity(),
+        margin: const EdgeInsets.symmetric(horizontal: 8.0),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          boxShadow:
+              isSelected
+                  ? [
+                    BoxShadow(
+                      color: Colors.yellow.withOpacity(0.5),
+                      blurRadius: 15,
+                      spreadRadius: 3,
+                    ),
+                  ]
+                  : null,
+          border:
+              isSelected ? Border.all(color: Colors.yellow, width: 3) : null,
+        ),
+        child: Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: CachedNetworkImage(
+                imageUrl: imageUrl,
+                width: double.infinity,
+                height: 300,
+                fit: BoxFit.cover,
+                cacheManager: customCacheManager,
+                placeholder:
+                    (context, url) =>
+                        const Center(child: CircularProgressIndicator()),
+                errorWidget:
+                    (context, url, error) => Container(
                       width: double.infinity,
                       height: 300,
-                      fit: BoxFit.cover,
-                      cacheManager: customCacheManager,
-                      placeholder:
-                          (context, url) =>
-                              const Center(child: CircularProgressIndicator()),
-                      errorWidget:
-                          (context, url, error) => Container(
-                            width: double.infinity,
-                            height: 300,
-                            color: Colors.grey[300],
-                            child: const Center(
-                              child: Text(
-                                'Rasmni yuklashda xato',
-                                style: TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 18,
-                                ),
-                              ),
-                            ),
-                          ),
-                    ),
-                  ),
-                  Container(
-                    width: double.infinity,
-                    height: 300,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black.withValues(alpha: 0.6),
-                        ],
+                      color: Colors.grey[300],
+                      child: const Center(
+                        child: Text(
+                          'Rasmni yuklashda xato',
+                          style: TextStyle(color: Colors.grey, fontSize: 18),
+                        ),
                       ),
                     ),
-                  ),
-                  Positioned(
-                    bottom: 12,
-                    left: 24,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title.length > 20
-                              ? '${title.substring(0, 20)}...'
-                              : title,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          year,
-                          style: const TextStyle(
-                            color: Colors.grey,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ],
+              ),
+            ),
+            Container(
+              width: double.infinity,
+              height: 300,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.6),
+                  ],
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 12,
+              left: 24,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title.length > 20 ? '${title.substring(0, 20)}...' : title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  Positioned(
-                    bottom: 12,
-                    right: 24,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Row(
-                          children: [
-                            const Text(
-                              'Kinopoisk: ',
-                              style: TextStyle(
-                                color: Colors.grey,
-                                fontSize: 16,
-                              ),
-                            ),
-                            Text(
-                              kinopoiskRating,
-                              style: const TextStyle(
-                                color: Colors.yellow,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            const Text(
-                              'IMDb: ',
-                              style: TextStyle(
-                                color: Colors.grey,
-                                fontSize: 16,
-                              ),
-                            ),
-                            Text(
-                              imdbRating,
-                              style: const TextStyle(
-                                color: Colors.yellow,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                  Text(
+                    year,
+                    style: const TextStyle(color: Colors.grey, fontSize: 16),
                   ),
                 ],
               ),
             ),
-          );
-        },
+            Positioned(
+              bottom: 12,
+              right: 24,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Row(
+                    children: [
+                      const Text(
+                        'Kinopoisk: ',
+                        style: TextStyle(color: Colors.grey, fontSize: 16),
+                      ),
+                      Text(
+                        kinopoiskRating,
+                        style: const TextStyle(
+                          color: Colors.yellow,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Text(
+                        'IMDb: ',
+                        style: TextStyle(color: Colors.grey, fontSize: 16),
+                      ),
+                      Text(
+                        imdbRating,
+                        style: const TextStyle(
+                          color: Colors.yellow,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -889,7 +1300,16 @@ class BannerItem extends StatelessWidget {
 
 // Latest Viewed Section
 class LatestViewedSection extends StatelessWidget {
-  const LatestViewedSection({super.key});
+  final bool isSelected;
+  final int selectedIndex;
+  final ScrollController scrollController;
+
+  const LatestViewedSection({
+    super.key,
+    this.isSelected = false,
+    this.selectedIndex = 0,
+    required this.scrollController,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -940,12 +1360,35 @@ class LatestViewedSection extends StatelessWidget {
           SizedBox(
             height: 180,
             child: ListView.builder(
+              controller: scrollController,
               scrollDirection: Axis.horizontal,
-              itemCount: latestViewed.length,
+              itemCount:
+                  latestViewed.length > 6
+                      ? 7
+                      : latestViewed.length, // Limit to 6 + 1 for View All
               itemExtent: 200,
               cacheExtent: 500,
               itemBuilder: (context, index) {
-                return LatestViewedItem(item: latestViewed[index]);
+                // If we have more than 6 items and this is the 7th position, show View All card
+                if (latestViewed.length > 6 && index == 6) {
+                  final itemSelected = isSelected && selectedIndex == index;
+                  return ViewAllCard(
+                    width: 190,
+                    height: 180,
+                    isSelected: itemSelected,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        createSlideRoute(const LatestViewedScreen()),
+                      );
+                    },
+                  );
+                }
+                final itemSelected = isSelected && selectedIndex == index;
+                return LatestViewedItem(
+                  item: latestViewed[index],
+                  isSelected: itemSelected,
+                );
               },
             ),
           ),
@@ -958,8 +1401,13 @@ class LatestViewedSection extends StatelessWidget {
 // Latest Viewed Item
 class LatestViewedItem extends StatelessWidget {
   final dynamic item;
+  final bool isSelected;
 
-  const LatestViewedItem({super.key, required this.item});
+  const LatestViewedItem({
+    super.key,
+    required this.item,
+    this.isSelected = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -987,93 +1435,80 @@ class LatestViewedItem extends StatelessWidget {
         '${viewedMinutes.toString().padLeft(2, '0')}:${viewedSeconds.toString().padLeft(2, '0')}';
     final double progress = viewedTime / (playbackTime * 60);
 
-    return FocusScope(
-      child: Builder(
-        builder: (context) {
-          final focusNode = FocusNode();
-          return GestureDetector(
-            onTap: () {
-              Navigator.push(
-                context,
-                createSlideRoute(FilmScreen(filmId: filmId)),
-              );
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              transform:
-                  FocusScope.of(context).hasFocus
-                      ? (Matrix4.identity()..scale(1.05))
-                      : Matrix4.identity(),
-              width: 190,
-              margin: const EdgeInsets.only(right: 16),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                image: DecorationImage(
-                  image: CachedNetworkImageProvider(
-                    imageUrl,
-                    cacheManager: customCacheManager,
-                  ),
-                  fit: BoxFit.cover,
-                ),
-                boxShadow:
-                    FocusScope.of(context).hasFocus
-                        ? [
-                          BoxShadow(
-                            color: Colors.yellow.withOpacity(0.3),
-                            blurRadius: 8,
-                          ),
-                        ]
-                        : null,
-                border:
-                    FocusScope.of(context).hasFocus
-                        ? Border.all(color: Colors.yellow, width: 2)
-                        : null,
-              ),
-              child: Stack(
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(context, createSlideRoute(FilmScreen(filmId: filmId)));
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        transform:
+            isSelected ? (Matrix4.identity()..scale(1.05)) : Matrix4.identity(),
+        width: 190,
+        margin: const EdgeInsets.only(right: 16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          image: DecorationImage(
+            image: CachedNetworkImageProvider(
+              imageUrl,
+              cacheManager: customCacheManager,
+            ),
+            fit: BoxFit.cover,
+          ),
+          boxShadow:
+              isSelected
+                  ? [
+                    BoxShadow(
+                      color: Colors.yellow.withOpacity(0.5),
+                      blurRadius: 15,
+                      spreadRadius: 3,
+                    ),
+                  ]
+                  : null,
+          border:
+              isSelected ? Border.all(color: Colors.yellow, width: 3) : null,
+        ),
+        child: Stack(
+          children: [
+            Positioned(
+              bottom: 12,
+              right: 12,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Positioned(
-                    bottom: 12,
-                    right: 12,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.withOpacity(0.7),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            viewedTimeString,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          width: 180,
-                          child: LinearProgressIndicator(
-                            value: progress.clamp(0.0, 1.0),
-                            backgroundColor: Colors.grey[400],
-                            valueColor: const AlwaysStoppedAnimation<Color>(
-                              Colors.yellow,
-                            ),
-                          ),
-                        ),
-                      ],
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.withOpacity(0.7),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      viewedTimeString,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: 180,
+                    child: LinearProgressIndicator(
+                      value: progress.clamp(0.0, 1.0),
+                      backgroundColor: Colors.grey[400],
+                      valueColor: const AlwaysStoppedAnimation<Color>(
+                        Colors.yellow,
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-          );
-        },
+          ],
+        ),
       ),
     );
   }
@@ -1081,7 +1516,16 @@ class LatestViewedItem extends StatelessWidget {
 
 // Recommended Films Section
 class RecommendedFilmsSection extends StatelessWidget {
-  const RecommendedFilmsSection({super.key});
+  final bool isSelected;
+  final int selectedIndex;
+  final ScrollController scrollController;
+
+  const RecommendedFilmsSection({
+    super.key,
+    this.isSelected = false,
+    this.selectedIndex = 0,
+    required this.scrollController,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1091,7 +1535,9 @@ class RecommendedFilmsSection extends StatelessWidget {
     return RecommendedFilmsWidget(
       films: films,
       isLoading: provider.isLoadingRecommended,
-
+      isSelected: isSelected,
+      selectedIndex: selectedIndex,
+      scrollController: scrollController,
       onTap: (film) {
         final filmId = film['id'];
         Navigator.push(context, createSlideRoute(FilmScreen(filmId: filmId)));
@@ -1110,8 +1556,17 @@ class RecommendedFilmsSection extends StatelessWidget {
 // Genres Section
 class GenresSection extends StatelessWidget {
   final VoidCallback onRetry;
+  final bool isSelected;
+  final int selectedIndex;
+  final ScrollController scrollController;
 
-  const GenresSection({super.key, required this.onRetry});
+  const GenresSection({
+    super.key,
+    required this.onRetry,
+    this.isSelected = false,
+    this.selectedIndex = 0,
+    required this.scrollController,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1190,16 +1645,37 @@ class GenresSection extends StatelessWidget {
         SizedBox(
           height: 250,
           child: ListView.builder(
+            controller: scrollController,
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 24),
-            itemCount: genres.length,
+            itemCount:
+                genres.length > 6
+                    ? 7
+                    : genres.length, // Limit to 6 + 1 for View All
             cacheExtent: 500,
             itemBuilder: (context, index) {
+              // If we have more than 6 items and this is the 7th position, show View All card
+              if (genres.length > 6 && index == 6) {
+                final itemSelected = isSelected && selectedIndex == index;
+                return ViewAllCard(
+                  width: 350,
+                  height: 250,
+                  isSelected: itemSelected,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      createSlideRoute(const GenresScreen()),
+                    );
+                  },
+                );
+              }
               final genre = genres[index];
+              final itemSelected = isSelected && selectedIndex == index;
               return Padding(
                 padding: const EdgeInsets.only(right: 16),
                 child: GenreCard(
                   genre: genre,
+                  isSelected: itemSelected,
                   onTap: () async {
                     final connectivityResult =
                         await Connectivity().checkConnectivity();
@@ -1246,7 +1722,20 @@ class GenresSection extends StatelessWidget {
 
 // Categories Section
 class CategoriesSection extends StatelessWidget {
-  const CategoriesSection({super.key});
+  final int baseSectionIndex;
+  final int selectedSectionIndex;
+  final int selectedItemIndex;
+  final Map<int, GlobalKey> categoryKeys;
+  final ScrollController Function(int) getScrollController;
+
+  const CategoriesSection({
+    super.key,
+    required this.baseSectionIndex,
+    required this.selectedSectionIndex,
+    required this.selectedItemIndex,
+    required this.categoryKeys,
+    required this.getScrollController,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1260,16 +1749,31 @@ class CategoriesSection extends StatelessWidget {
     }
     return Column(
       children:
-          categories.map((category) {
+          categories.asMap().entries.map((entry) {
+            final index = entry.key;
+            final category = entry.value;
             final categoryId = category['id'];
             final films = categoryFilms[categoryId] ?? [];
             final isLoading = isLoadingCategoryFilms[categoryId] ?? true;
+            final sectionIndex = baseSectionIndex + index;
+            final isSectionSelected = selectedSectionIndex == sectionIndex;
 
-            return CategorySection(
-              category: category,
-              films: films,
-              isLoading: isLoading,
-              isDarkMode: true,
+            // Create or get the key for this category
+            if (!categoryKeys.containsKey(index)) {
+              categoryKeys[index] = GlobalKey();
+            }
+
+            return Container(
+              key: categoryKeys[index],
+              child: CategorySection(
+                category: category,
+                films: films,
+                isLoading: isLoading,
+                isDarkMode: true,
+                isSelected: isSectionSelected,
+                selectedItemIndex: selectedItemIndex,
+                scrollController: getScrollController(sectionIndex),
+              ),
             );
           }).toList(),
     );
@@ -1282,6 +1786,9 @@ class CategorySection extends StatelessWidget {
   final List<dynamic> films;
   final bool isLoading;
   final bool isDarkMode;
+  final bool isSelected;
+  final int selectedItemIndex;
+  final ScrollController scrollController;
 
   const CategorySection({
     super.key,
@@ -1289,6 +1796,9 @@ class CategorySection extends StatelessWidget {
     required this.films,
     required this.isLoading,
     required this.isDarkMode,
+    this.isSelected = false,
+    this.selectedItemIndex = 0,
+    required this.scrollController,
   });
 
   @override
@@ -1358,15 +1868,40 @@ class CategorySection extends StatelessWidget {
                       ),
                     )
                     : ListView.builder(
+                      controller: scrollController,
                       scrollDirection: Axis.horizontal,
-                      itemCount: films.length,
+                      itemCount:
+                          films.length > 6
+                              ? 7
+                              : films.length, // Limit to 6 + 1 for View All
                       itemExtent: itemWidth + itemMargin,
                       cacheExtent: 500,
                       itemBuilder: (context, index) {
+                        // If we have more than 6 items and this is the 7th position, show View All card
+                        if (films.length > 6 && index == 6) {
+                          final itemSelected =
+                              isSelected && selectedItemIndex == index;
+                          return ViewAllCard(
+                            width: itemWidth,
+                            height: itemHeight,
+                            isSelected: itemSelected,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                createSlideRoute(
+                                  CategoriesScreen(initialCategory: category),
+                                ),
+                              );
+                            },
+                          );
+                        }
+                        final itemSelected =
+                            isSelected && selectedItemIndex == index;
                         return FilmItem(
                           film: films[index],
                           itemWidth: itemWidth,
                           itemHeight: itemHeight,
+                          isSelected: itemSelected,
                         );
                       },
                     ),
@@ -1382,12 +1917,14 @@ class FilmItem extends StatelessWidget {
   final dynamic film;
   final double itemWidth;
   final double itemHeight;
+  final bool isSelected;
 
   const FilmItem({
     super.key,
     required this.film,
     required this.itemWidth,
     required this.itemHeight,
+    this.isSelected = false,
   });
 
   @override
@@ -1407,78 +1944,65 @@ class FilmItem extends StatelessWidget {
     final genreName = genres.isNotEmpty ? genres[0]['name_uz'] ?? '' : '';
     final filmId = film['id'];
 
-    return FocusScope(
-      child: Builder(
-        builder: (context) {
-          final focusNode = FocusNode();
-          return GestureDetector(
-            onTap: () {
-              Navigator.push(
-                context,
-                createSlideRoute(FilmScreen(filmId: filmId)),
-              );
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              transform:
-                  FocusScope.of(context).hasFocus
-                      ? (Matrix4.identity()..scale(1.05))
-                      : Matrix4.identity(),
-              margin: const EdgeInsets.only(right: 16),
-              width: itemWidth,
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(context, createSlideRoute(FilmScreen(filmId: filmId)));
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        transform:
+            isSelected ? (Matrix4.identity()..scale(1.05)) : Matrix4.identity(),
+        margin: const EdgeInsets.only(right: 16),
+        width: itemWidth,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          boxShadow:
+              isSelected
+                  ? [
+                    BoxShadow(
+                      color: Colors.yellow.withOpacity(0.5),
+                      blurRadius: 15,
+                      spreadRadius: 3,
+                    ),
+                  ]
+                  : null,
+          border:
+              isSelected ? Border.all(color: Colors.yellow, width: 3) : null,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              height: itemHeight,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
-                boxShadow:
-                    FocusScope.of(context).hasFocus
-                        ? [
-                          BoxShadow(
-                            color: Colors.yellow.withOpacity(0.3),
-                            blurRadius: 8,
-                          ),
-                        ]
-                        : null,
-                border:
-                    FocusScope.of(context).hasFocus
-                        ? Border.all(color: Colors.yellow, width: 2)
-                        : null,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    height: itemHeight,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      image: DecorationImage(
-                        image: CachedNetworkImageProvider(
-                          imageUrl,
-                          cacheManager: customCacheManager,
-                        ),
-                        fit: BoxFit.cover,
-                      ),
-                    ),
+                image: DecorationImage(
+                  image: CachedNetworkImageProvider(
+                    imageUrl,
+                    cacheManager: customCacheManager,
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    "$year · $genreName",
-                    style: const TextStyle(fontSize: 14, color: Colors.grey),
-                  ),
-                ],
+                  fit: BoxFit.cover,
+                ),
               ),
             ),
-          );
-        },
+            const SizedBox(height: 8),
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              "$year · $genreName",
+              style: const TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1488,8 +2012,14 @@ class FilmItem extends StatelessWidget {
 class GenreCard extends StatelessWidget {
   final Map<String, dynamic> genre;
   final VoidCallback onTap;
+  final bool isSelected;
 
-  const GenreCard({super.key, required this.genre, required this.onTap});
+  const GenreCard({
+    super.key,
+    required this.genre,
+    required this.onTap,
+    this.isSelected = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1503,97 +2033,155 @@ class GenreCard extends StatelessWidget {
             : 'https://placehold.co/350x250';
     final name = genre['name_uz'] ?? 'Noma’lum';
 
-    return FocusScope(
-      child: Builder(
-        builder: (context) {
-          final focusNode = FocusNode();
-          return GestureDetector(
-            onTap: onTap,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              transform:
-                  FocusScope.of(context).hasFocus
-                      ? (Matrix4.identity()..scale(1.05))
-                      : Matrix4.identity(),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                boxShadow:
-                    FocusScope.of(context).hasFocus
-                        ? [
-                          BoxShadow(
-                            color: Colors.yellow.withOpacity(0.3),
-                            blurRadius: 8,
-                          ),
-                        ]
-                        : null,
-                border:
-                    FocusScope.of(context).hasFocus
-                        ? Border.all(color: Colors.yellow, width: 2)
-                        : null,
-              ),
-              child: Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: CachedNetworkImage(
-                      imageUrl: imageUrl,
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        transform:
+            isSelected ? (Matrix4.identity()..scale(1.05)) : Matrix4.identity(),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          boxShadow:
+              isSelected
+                  ? [
+                    BoxShadow(
+                      color: Colors.yellow.withOpacity(0.5),
+                      blurRadius: 15,
+                      spreadRadius: 3,
+                    ),
+                  ]
+                  : null,
+          border:
+              isSelected ? Border.all(color: Colors.yellow, width: 3) : null,
+        ),
+        child: Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: CachedNetworkImage(
+                imageUrl: imageUrl,
+                width: 350,
+                height: 250,
+                fit: BoxFit.cover,
+                cacheManager: customCacheManager,
+                placeholder:
+                    (context, url) =>
+                        const Center(child: CircularProgressIndicator()),
+                errorWidget:
+                    (context, url, error) => Container(
                       width: 350,
                       height: 250,
-                      fit: BoxFit.cover,
-                      cacheManager: customCacheManager,
-                      placeholder:
-                          (context, url) =>
-                              const Center(child: CircularProgressIndicator()),
-                      errorWidget:
-                          (context, url, error) => Container(
-                            width: 350,
-                            height: 250,
-                            color: Colors.grey[300],
-                            child: const Center(
-                              child: Text(
-                                'Rasmni yuklashda xato',
-                                style: TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 18,
-                                ),
-                              ),
-                            ),
-                          ),
-                    ),
-                  ),
-                  Container(
-                    width: 350,
-                    height: 250,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black.withValues(alpha: 0.6),
-                        ],
+                      color: Colors.grey[300],
+                      child: const Center(
+                        child: Text(
+                          'Rasmni yuklashda xato',
+                          style: TextStyle(color: Colors.grey, fontSize: 18),
+                        ),
                       ),
                     ),
-                  ),
-                  Positioned(
-                    bottom: 16,
-                    left: 24,
-                    child: Text(
-                      name,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
               ),
             ),
-          );
-        },
+            Container(
+              width: 350,
+              height: 250,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.6),
+                  ],
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 16,
+              left: 24,
+              child: Text(
+                name,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// View All Card - navigates to full content screen
+class ViewAllCard extends StatelessWidget {
+  final double width;
+  final double height;
+  final VoidCallback onTap;
+  final bool isSelected;
+
+  const ViewAllCard({
+    super.key,
+    required this.width,
+    required this.height,
+    required this.onTap,
+    this.isSelected = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        transform:
+            isSelected ? (Matrix4.identity()..scale(1.05)) : Matrix4.identity(),
+        margin: const EdgeInsets.only(right: 16),
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          color: Colors.grey[800]?.withOpacity(0.5),
+          border: Border.all(
+            color: isSelected ? Colors.yellow : Colors.grey[700]!,
+            width: isSelected ? 3 : 1,
+          ),
+          boxShadow:
+              isSelected
+                  ? [
+                    BoxShadow(
+                      color: Colors.yellow.withOpacity(0.5),
+                      blurRadius: 15,
+                      spreadRadius: 3,
+                    ),
+                  ]
+                  : null,
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.arrow_forward,
+                size: 48,
+                color: isSelected ? Colors.yellow : Colors.white,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                "Barchasini ko'rish",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isSelected ? Colors.yellow : Colors.white,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

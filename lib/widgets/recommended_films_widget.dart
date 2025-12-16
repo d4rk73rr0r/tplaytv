@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
-import 'package:flutter/services.dart';
+//import 'package:flutter/services.dart';
+import 'package:tplaytv/screens/index_screen.dart';
 
 final customCacheManager = CacheManager(
   Config(
@@ -17,6 +18,9 @@ class RecommendedFilmsWidget extends StatelessWidget {
   final String? error;
   final Function(dynamic) onTap;
   final VoidCallback onMoreTap;
+  final bool isSelected;
+  final int selectedIndex;
+  final ScrollController? scrollController;
 
   const RecommendedFilmsWidget({
     super.key,
@@ -26,6 +30,9 @@ class RecommendedFilmsWidget extends StatelessWidget {
     required this.onTap,
     required this.onMoreTap,
     required bool isDark,
+    this.isSelected = false,
+    this.selectedIndex = 0,
+    this.scrollController,
   });
 
   void _showErrorDialog(BuildContext context, String message) {
@@ -156,13 +163,30 @@ class RecommendedFilmsWidget extends StatelessWidget {
                       ),
                     )
                     : ListView.builder(
+                      controller: scrollController,
                       scrollDirection: Axis.horizontal,
                       physics: const BouncingScrollPhysics(),
                       cacheExtent: 500,
-                      itemCount: films.length,
+                      itemCount:
+                          films.length > 6
+                              ? 7
+                              : films.length, // Limit to 6 + 1 for View All
                       itemExtent: itemWidth + itemMargin,
                       itemBuilder: (context, index) {
+                        // If we have more than 6 items and this is the 7th position, show View All card
+                        if (films.length > 6 && index == 6) {
+                          final itemSelected =
+                              isSelected && selectedIndex == index;
+                          return ViewAllCard(
+                            width: itemWidth,
+                            height: itemHeight,
+                            isSelected: itemSelected,
+                            onTap: onMoreTap,
+                          );
+                        }
                         final film = films[index];
+                        final itemSelected =
+                            isSelected && selectedIndex == index;
                         final files = film['files'] as List<dynamic>? ?? [];
                         final imageUrl =
                             files.isNotEmpty
@@ -176,149 +200,117 @@ class RecommendedFilmsWidget extends StatelessWidget {
                                         'https://placehold.co/320x180')
                                 : 'https://placehold.co/320x180';
 
-                        // Use FocusableActionDetector so item can receive focus and ActivateIntent
                         return Padding(
                           padding: const EdgeInsets.only(right: 16),
-                          child: FocusableActionDetector(
-                            shortcuts: <LogicalKeySet, Intent>{
-                              // Space / Enter will map to ActivateIntent by default, but we include for clarity
-                              LogicalKeySet(LogicalKeyboardKey.select):
-                                  const ActivateIntent(),
-                              LogicalKeySet(LogicalKeyboardKey.enter):
-                                  const ActivateIntent(),
-                              LogicalKeySet(LogicalKeyboardKey.numpadEnter):
-                                  const ActivateIntent(),
-                            },
-                            actions: <Type, Action<Intent>>{
-                              ActivateIntent: CallbackAction<Intent>(
-                                onInvoke: (Intent intent) {
-                                  onTap(film);
-                                  return null;
-                                },
-                              ),
-                            },
-                            child: Builder(
-                              builder: (context) {
-                                final hasFocus = Focus.of(context).hasFocus;
-                                return GestureDetector(
-                                  onTap: () => onTap(film),
-                                  child: AnimatedContainer(
-                                    duration: const Duration(milliseconds: 200),
-                                    transform:
-                                        hasFocus
-                                            ? (Matrix4.identity()..scale(1.1))
-                                            : Matrix4.identity(),
-                                    margin: const EdgeInsets.only(right: 16),
-                                    width: itemWidth,
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(12),
-                                      border:
-                                          hasFocus
-                                              ? Border.all(
-                                                color: Colors.yellow,
-                                                width: 2,
-                                              )
-                                              : null,
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withOpacity(0.2),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 4),
-                                        ),
-                                        if (hasFocus)
-                                          BoxShadow(
-                                            color: Colors.yellow.withOpacity(
-                                              0.3,
-                                            ),
-                                            blurRadius: 8,
-                                          ),
-                                      ],
+                          child: GestureDetector(
+                            onTap: () => onTap(film),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              transform:
+                                  itemSelected
+                                      ? (Matrix4.identity()..scale(1.1))
+                                      : Matrix4.identity(),
+                              margin: const EdgeInsets.only(right: 16),
+                              width: itemWidth,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                border:
+                                    itemSelected
+                                        ? Border.all(
+                                          color: Colors.yellow,
+                                          width: 3,
+                                        )
+                                        : null,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.2),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                  if (itemSelected)
+                                    BoxShadow(
+                                      color: Colors.yellow.withOpacity(0.5),
+                                      blurRadius: 15,
+                                      spreadRadius: 3,
                                     ),
-                                    child: Material(
-                                      color: Colors.black.withOpacity(0.8),
-                                      borderRadius: BorderRadius.circular(12),
-                                      child: InkWell(
+                                ],
+                              ),
+                              child: Material(
+                                color: Colors.black.withOpacity(0.8),
+                                borderRadius: BorderRadius.circular(12),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(12),
+                                  onTap: () => onTap(film),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      ClipRRect(
                                         borderRadius: BorderRadius.circular(12),
-                                        // Note: onTap also here so touch works
-                                        onTap: () => onTap(film),
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            ClipRRect(
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                              child: CachedNetworkImage(
-                                                imageUrl: imageUrl,
-                                                cacheManager:
-                                                    customCacheManager,
-                                                fit: BoxFit.cover,
+                                        child: CachedNetworkImage(
+                                          imageUrl: imageUrl,
+                                          cacheManager: customCacheManager,
+                                          fit: BoxFit.cover,
+                                          width: itemWidth,
+                                          height: itemHeight,
+                                          maxHeightDiskCache: 400,
+                                          fadeInDuration: const Duration(
+                                            milliseconds: 300,
+                                          ),
+                                          placeholder:
+                                              (context, url) => Container(
                                                 width: itemWidth,
                                                 height: itemHeight,
-                                                maxHeightDiskCache: 400,
-                                                fadeInDuration: const Duration(
-                                                  milliseconds: 300,
+                                                color: Colors.black.withOpacity(
+                                                  0.8,
                                                 ),
-                                                placeholder:
-                                                    (context, url) => Container(
-                                                      width: itemWidth,
-                                                      height: itemHeight,
-                                                      color: Colors.black
-                                                          .withOpacity(0.8),
-                                                      child: const Center(
-                                                        child:
-                                                            CircularProgressIndicator(
-                                                              color:
-                                                                  Colors.white,
-                                                            ),
+                                                child: const Center(
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                        color: Colors.white,
+                                                      ),
+                                                ),
+                                              ),
+                                          errorWidget:
+                                              (context, url, error) =>
+                                                  Container(
+                                                    width: itemWidth,
+                                                    height: itemHeight,
+                                                    color: Colors.black
+                                                        .withOpacity(0.8),
+                                                    child: const Center(
+                                                      child: Icon(
+                                                        Icons.broken_image,
+                                                        size: 48,
+                                                        color: Colors.white,
                                                       ),
                                                     ),
-                                                errorWidget:
-                                                    (
-                                                      context,
-                                                      url,
-                                                      error,
-                                                    ) => Container(
-                                                      width: itemWidth,
-                                                      height: itemHeight,
-                                                      color: Colors.black
-                                                          .withOpacity(0.8),
-                                                      child: const Center(
-                                                        child: Icon(
-                                                          Icons.broken_image,
-                                                          size: 48,
-                                                          color: Colors.white,
-                                                        ),
-                                                      ),
-                                                    ),
-                                              ),
-                                            ),
-                                            const SizedBox(height: 8),
-                                            Text(
-                                              film['name_uz'] ?? 'Noma’lum',
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
-                                                fontSize: 20,
-                                                fontWeight: FontWeight.w600,
-                                                color: Colors.white,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              "${film['year']?.toString() ?? ''} · ${film['genres']?.isNotEmpty ?? false ? film['genres'][0]['name_uz'] ?? '' : ''}",
-                                              style: const TextStyle(
-                                                fontSize: 18,
-                                                color: Colors.white70,
-                                              ),
-                                            ),
-                                          ],
+                                                  ),
                                         ),
                                       ),
-                                    ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        film['name_uz'] ?? 'Noma’lum',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        "${film['year']?.toString() ?? ''} · ${film['genres']?.isNotEmpty ?? false ? film['genres'][0]['name_uz'] ?? '' : ''}",
+                                        style: const TextStyle(
+                                          fontSize: 18,
+                                          color: Colors.white70,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                );
-                              },
+                                ),
+                              ),
                             ),
                           ),
                         );
