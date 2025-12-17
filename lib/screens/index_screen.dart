@@ -1890,101 +1890,106 @@ class GenreFilmStyleCard extends StatelessWidget {
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.only(right: 3),
-        child: SizedBox(
-          width: itemWidth,
-          height: itemHeight,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                transform: Matrix4.identity()..scale(isSelected ? 1.05 : 1.0),
-                transformAlignment: Alignment.center,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.4),
-                      blurRadius: 15,
-                      spreadRadius: 2,
-                      offset: const Offset(0, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: itemWidth,
+              height: itemHeight + 16, // Border uchun qo'shimcha joy
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    transform: Matrix4.identity()..scale(isSelected ? 1.05 : 1.0),
+                    transformAlignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.4),
+                          blurRadius: 15,
+                          spreadRadius: 2,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                      border:
+                          isSelected
+                              ? Border.all(
+                                color: const Color.fromARGB(255, 255, 59, 108),
+                                width: 2,
+                              )
+                              : null,
                     ),
-                  ],
-                  border:
-                      isSelected
-                          ? Border.all(
-                            color: const Color.fromARGB(255, 255, 59, 108),
-                            width: 2,
-                          )
-                          : null,
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: Stack(
-                    children: [
-                      CachedNetworkImage(
-                        imageUrl: imageUrl,
-                        width: itemWidth,
-                        height: itemHeight,
-                        fit: BoxFit.cover,
-                        cacheManager: customCacheManager,
-                        placeholder:
-                            (context, url) =>
-                                Container(color: Colors.grey[800]),
-                        errorWidget:
-                            (context, url, error) => Container(
-                              color: Colors.grey[800],
-                              child: const Icon(
-                                Icons.broken_image,
-                                color: Colors.grey,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: Stack(
+                        children: [
+                          CachedNetworkImage(
+                            imageUrl: imageUrl,
+                            width: itemWidth,
+                            height: itemHeight,
+                            fit: BoxFit.cover,
+                            cacheManager: customCacheManager,
+                            placeholder:
+                                (context, url) =>
+                                    Container(color: Colors.grey[800]),
+                            errorWidget:
+                                (context, url, error) => Container(
+                                  color: Colors.grey[800],
+                                  child: const Icon(
+                                    Icons.broken_image,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                          ),
+                          // Gradient overlay
+                          Container(
+                            width: itemWidth,
+                            height: itemHeight,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(20),
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.transparent,
+                                  Colors.black.withOpacity(0.7),
+                                ],
+                                stops: const [0.5, 1.0],
                               ),
                             ),
-                      ),
-                      // Gradient overlay
-                      Container(
-                        width: itemWidth,
-                        height: itemHeight,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(20),
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              Colors.black.withOpacity(0.7),
-                            ],
-                            stops: const [0.5, 1.0],
                           ),
-                        ),
-                      ),
-                      // Janr nomi chap pastki burchakda
-                      Positioned(
-                        bottom: 12,
-                        left: 12,
-                        right: 12,
-                        child: Text(
-                          name,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
+                          // Janr nomi chap pastki burchakda
+                          Positioned(
+                            bottom: 12,
+                            left: 12,
+                            right: 12,
+                            child: Text(
+                              name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
                           ),
-                        ),
+                          if (isSelected)
+                            Container(
+                              width: itemWidth,
+                              height: itemHeight,
+                              color: Colors.white.withOpacity(0.12),
+                            ),
+                        ],
                       ),
-                      if (isSelected)
-                        Container(
-                          width: itemWidth,
-                          height: itemHeight,
-                          color: Colors.white.withOpacity(0.12),
-                        ),
-                    ],
+                    ),
                   ),
-                ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
