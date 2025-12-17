@@ -716,7 +716,9 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
     // Genres section - limit to 7 items (6 + View All)
     if (provider.genresPreview.isNotEmpty) {
       if (currentSection == sectionIndex) {
-        return provider.genresPreview.length + 1; // Janrlar soni + "View All"
+        return provider.genresPreview.length > 6
+            ? 7
+            : provider.genresPreview.length;
       }
       currentSection++;
     }
@@ -1761,8 +1763,7 @@ class _GenresSectionState extends State<GenresSection> {
     final itemHeight = itemWidth * (9 / 16); // 16:9 aspect ratio
 
     // View All kartasini qo'shish uchun umumiy uzunlik
-    // Barcha janrlarni va "View All" (oxirgi kartani) kiritishni ta'minlash
-    final totalItems = genres.length + 1;
+    final totalItems = genres.length + 1; // barcha janrlar + View All
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 24.0),
