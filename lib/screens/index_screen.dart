@@ -1892,7 +1892,7 @@ class GenreFilmStyleCard extends StatelessWidget {
         padding: const EdgeInsets.only(right: 3),
         child: SizedBox(
           width: itemWidth,
-          height: itemHeight,
+          height: itemHeight + 16, // Match ViewAllCard height with border space
           child: Stack(
             alignment: Alignment.center,
             children: [
