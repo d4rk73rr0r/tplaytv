@@ -713,10 +713,10 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
       currentSection++;
     }
 
-    // Genres section - limit to 7 items (6 + View All)
+    // Genres section - show all genres + View All
     if (provider.genresPreview.isNotEmpty) {
       if (currentSection == sectionIndex) {
-        return provider.genresPreview.length + 1; // Janrlar soni + "View All"
+        return provider.genresPreview.length + 1; // All genres + "View All"
       }
       currentSection++;
     }
@@ -1892,7 +1892,7 @@ class GenreFilmStyleCard extends StatelessWidget {
         padding: const EdgeInsets.only(right: 3),
         child: SizedBox(
           width: itemWidth,
-          height: itemHeight,
+          height: itemHeight + 16, // Match ViewAllCard height with border space
           child: Stack(
             alignment: Alignment.center,
             children: [
