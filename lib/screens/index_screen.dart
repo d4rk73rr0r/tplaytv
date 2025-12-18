@@ -203,6 +203,9 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
   int _selectedSectionIndex = 0;
   int _selectedItemIndex = 0;
 
+  // Delay for focus restoration after returning from sidebar
+  static const Duration _focusRestorationDelay = Duration(milliseconds: 50);
+
   // Scroll controller for vertical scrolling
   late ScrollController _scrollController;
 
@@ -253,13 +256,11 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     // Re-request focus when widget becomes active again (e.g., after returning from sidebar)
-    // Use a slight delay to ensure the focus system has updated
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(const Duration(milliseconds: 50), () {
-        if (mounted && !_contentFocusNode.hasFocus) {
-          _contentFocusNode.requestFocus();
-        }
-      });
+    // Use a delay to ensure the focus system has updated after sidebar closes
+    Future.delayed(_focusRestorationDelay, () {
+      if (mounted && !_contentFocusNode.hasFocus) {
+        _contentFocusNode.requestFocus();
+      }
     });
   }
 
