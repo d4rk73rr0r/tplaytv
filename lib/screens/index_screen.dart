@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -1044,30 +1043,10 @@ class BannerCarousel extends StatefulWidget {
   State<BannerCarousel> createState() => _BannerCarouselState();
 }
 
-class _BannerCarouselState extends State<BannerCarousel>
-    with TickerProviderStateMixin {
+class _BannerCarouselState extends State<BannerCarousel> {
   int _currentIndex = 0;
-  late AnimationController _animationController;
   final CarouselSliderController _carouselController =
       CarouselSliderController();
-
-  @override
-  void initState() {
-    super.initState();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 6),
-    )..addListener(() {
-      setState(() {});
-    });
-    _animationController.forward();
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
-  }
 
   @override
   void didUpdateWidget(BannerCarousel oldWidget) {
@@ -1083,119 +1062,33 @@ class _BannerCarouselState extends State<BannerCarousel>
     final provider = Provider.of<IndexScreenProvider>(context);
     final banners = provider.banners;
 
-    return Stack(
-      alignment: Alignment.bottomCenter,
-      children: [
-        CarouselSlider(
-          carouselController: _carouselController,
-          options: CarouselOptions(
-            height: 300.0,
-            autoPlay: true,
-            autoPlayInterval: const Duration(seconds: 6),
-            enlargeCenterPage: true,
-            viewportFraction: 0.9,
-            onPageChanged: (index, reason) {
-              setState(() {
-                _currentIndex = index;
-                _animationController.reset();
-                _animationController.forward();
-              });
-            },
-          ),
-          items:
-              banners.asMap().entries.map((entry) {
-                final index = entry.key;
-                final banner = entry.value;
-                final isSelected =
-                    widget.isSelected && widget.selectedIndex == index;
-                return Builder(
-                  builder: (BuildContext context) {
-                    return BannerItem(banner: banner, isSelected: isSelected);
-                  },
-                );
-              }).toList(),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 12.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children:
-                banners.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6.0),
-                    child:
-                        _currentIndex == index
-                            ? _buildAnimatedIndicator()
-                            : Container(
-                              width: 10.0,
-                              height: 10.0,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.grey.withOpacity(0.5),
-                              ),
-                            ),
-                  );
-                }).toList(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAnimatedIndicator() {
-    return SizedBox(
-      width: 20.0,
-      height: 20.0,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          CustomPaint(
-            painter: CircleProgressPainter(_animationController.value),
-            child: const SizedBox(width: 20.0, height: 20.0),
-          ),
-          Container(
-            width: 10.0,
-            height: 10.0,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white,
-            ),
-          ),
-        ],
+    return CarouselSlider(
+      carouselController: _carouselController,
+      options: CarouselOptions(
+        height: 400.0,
+        autoPlay: false,
+        enlargeCenterPage: false,
+        viewportFraction: 1.0,
+        onPageChanged: (index, reason) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
       ),
+      items:
+          banners.asMap().entries.map((entry) {
+            final index = entry.key;
+            final banner = entry.value;
+            final isSelected =
+                widget.isSelected && widget.selectedIndex == index;
+            return Builder(
+              builder: (BuildContext context) {
+                return BannerItem(banner: banner, isSelected: isSelected);
+              },
+            );
+          }).toList(),
     );
   }
-}
-
-// Aylana animatsiyasi uchun CustomPainter
-class CircleProgressPainter extends CustomPainter {
-  final double progress;
-
-  CircleProgressPainter(this.progress);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final Paint paint =
-        Paint()
-          ..color = Colors.white
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.0;
-
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = (size.width - 4) / 2;
-
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: radius),
-      -math.pi / 2,
-      2 * math.pi * progress,
-      false,
-      paint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
 
 // Banner Item
@@ -1213,23 +1106,15 @@ class BannerItem extends StatelessWidget {
         files.isNotEmpty
             ? files[0]['link'] ?? 'https://placehold.co/640x360'
             : 'https://placehold.co/640x360';
-    final title = film['name_uz'] ?? banner['title'] ?? 'Noma’lum';
-    final year = film['year']?.toString() ?? 'Noma’lum';
-    final kinopoiskRating = film['kinopoisk_rating']?.toString() ?? 'N/A';
-    final imdbRating = film['imdb_rating']?.toString() ?? 'N/A';
     final filmId = film['id'] ?? 0;
 
     return GestureDetector(
       onTap: () {
         Navigator.push(context, createSlideRoute(FilmScreen(filmId: filmId)));
       },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        transform:
-            isSelected ? Matrix4.identity().scaled(1.05) : Matrix4.identity(),
-        margin: const EdgeInsets.symmetric(horizontal: 8.0),
+      child: Container(
+        width: double.infinity,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20), // Increased border-radius
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.5),
@@ -1241,14 +1126,12 @@ class BannerItem extends StatelessWidget {
           border:
               isSelected ? Border.all(color: Colors.yellow, width: 3) : null,
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: Stack(
+        child: Stack(
             children: [
               CachedNetworkImage(
                 imageUrl: imageUrl,
                 width: double.infinity,
-                height: 300,
+                height: 400,
                 fit: BoxFit.cover,
                 cacheManager: customCacheManager,
                 placeholder:
@@ -1257,7 +1140,7 @@ class BannerItem extends StatelessWidget {
                 errorWidget:
                     (context, url, error) => Container(
                       width: double.infinity,
-                      height: 300,
+                      height: 400,
                       color: Colors.grey[300],
                       child: const Center(
                         child: Text(
@@ -1269,84 +1152,40 @@ class BannerItem extends StatelessWidget {
               ),
               Container(
                 width: double.infinity,
-                height: 300,
+                height: 400,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [Colors.transparent, Colors.black.withOpacity(0.5)],
-                    stops: const [0.7, 1.0],
+                    colors: [Colors.transparent, Colors.black.withOpacity(0.7)],
+                    stops: const [0.5, 1.0],
                   ),
                 ),
               ),
               Positioned(
-                bottom: 16,
-                left: 24,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title.length > 20
-                          ? '${title.substring(0, 20)}...'
-                          : title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
+                bottom: 40,
+                left: 40,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32,
+                    vertical: 16,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: const Color.fromARGB(255, 255, 59, 108),
+                      width: 2,
                     ),
-                    Text(
-                      year,
-                      style: TextStyle(color: Colors.grey[300], fontSize: 16),
+                  ),
+                  child: const Text(
+                    'Watch',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
                     ),
-                  ],
-                ),
-              ),
-              Positioned(
-                bottom: 16,
-                right: 24,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          'Kinopoisk: ',
-                          style: TextStyle(
-                            color: Colors.grey[300],
-                            fontSize: 16,
-                          ),
-                        ),
-                        Text(
-                          kinopoiskRating,
-                          style: const TextStyle(
-                            color: Colors.yellow,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Text(
-                          'IMDb: ',
-                          style: TextStyle(
-                            color: Colors.grey[300],
-                            fontSize: 16,
-                          ),
-                        ),
-                        Text(
-                          imdbRating,
-                          style: const TextStyle(
-                            color: Colors.yellow,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ],
