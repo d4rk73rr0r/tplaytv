@@ -907,7 +907,6 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
       body: Focus(
         focusNode: _contentFocusNode,
         onKeyEvent: _handleContentKeyEvent,
-        canRequestFocus: true,
         skipTraversal: false,
         child: SafeArea(
           child: SingleChildScrollView(
