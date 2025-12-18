@@ -1121,69 +1121,68 @@ class BannerItem extends StatelessWidget {
               isSelected ? Border.all(color: Colors.yellow, width: 3) : null,
         ),
         child: Stack(
-            children: [
-              CachedNetworkImage(
-                imageUrl: imageUrl,
-                width: double.infinity,
-                height: 400,
-                fit: BoxFit.cover,
-                cacheManager: customCacheManager,
-                placeholder:
-                    (context, url) =>
-                        const Center(child: CircularProgressIndicator()),
-                errorWidget:
-                    (context, url, error) => Container(
-                      width: double.infinity,
-                      height: 400,
-                      color: Colors.grey[300],
-                      child: const Center(
-                        child: Text(
-                          'Rasmni yuklashda xato',
-                          style: TextStyle(color: Colors.grey, fontSize: 18),
-                        ),
+          children: [
+            CachedNetworkImage(
+              imageUrl: imageUrl,
+              width: double.infinity,
+              height: 400,
+              fit: BoxFit.cover,
+              cacheManager: customCacheManager,
+              placeholder:
+                  (context, url) =>
+                      const Center(child: CircularProgressIndicator()),
+              errorWidget:
+                  (context, url, error) => Container(
+                    width: double.infinity,
+                    height: 400,
+                    color: Colors.grey[300],
+                    child: const Center(
+                      child: Text(
+                        'Rasmni yuklashda xato',
+                        style: TextStyle(color: Colors.grey, fontSize: 18),
                       ),
                     ),
+                  ),
+            ),
+            Container(
+              width: double.infinity,
+              height: 400,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.transparent, Colors.black.withOpacity(0.7)],
+                  stops: const [0.5, 1.0],
+                ),
               ),
-              Container(
-                width: double.infinity,
-                height: 400,
+            ),
+            Positioned(
+              bottom: 40,
+              left: 40,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: 16,
+                ),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Colors.transparent, Colors.black.withOpacity(0.7)],
-                    stops: const [0.5, 1.0],
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: const Color.fromARGB(255, 255, 59, 108),
+                    width: 2,
+                  ),
+                ),
+                child: const Text(
+                  'Watch',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
-              Positioned(
-                bottom: 40,
-                left: 40,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 32,
-                    vertical: 16,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.transparent,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: const Color.fromARGB(255, 255, 59, 108),
-                      width: 2,
-                    ),
-                  ),
-                  child: const Text(
-                    'Watch',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
