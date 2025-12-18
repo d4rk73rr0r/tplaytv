@@ -257,11 +257,15 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
     super.didChangeDependencies();
     // Re-request focus when widget becomes active again (e.g., after returning from sidebar)
     // Use a delay to ensure the focus system has updated after sidebar closes
-    Future.delayed(_focusRestorationDelay, () {
-      if (mounted && !_contentFocusNode.hasFocus) {
-        _contentFocusNode.requestFocus();
-      }
-    });
+    // Note: Different from initState's addPostFrameCallback because we need to wait for
+    // the focus system to fully update after sidebar state changes
+    if (mounted) {
+      Future.delayed(_focusRestorationDelay, () {
+        if (mounted && !_contentFocusNode.hasFocus) {
+          _contentFocusNode.requestFocus();
+        }
+      });
+    }
   }
 
   @override
