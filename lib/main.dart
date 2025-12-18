@@ -6,7 +6,6 @@ import 'package:tplaytv/screens/tv_channels_screen.dart';
 import 'package:tplaytv/screens/catalog_screen.dart';
 import 'package:tplaytv/screens/favorites_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_iconly/flutter_iconly.dart';
 import 'package:flutter/services.dart';
 
 void main() async {
@@ -33,8 +32,8 @@ class _RiyaPlayAppState extends State<RiyaPlayApp> {
       title: 'TPlay TV',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        scaffoldBackgroundColor: const Color(0xFF111827),
-        textTheme: GoogleFonts.poppinsTextTheme(
+        scaffoldBackgroundColor: const Color(0xFF0F0F0F),
+        textTheme: GoogleFonts.robotoTextTheme(
           ThemeData.dark().textTheme.copyWith(
             displayLarge: const TextStyle(fontSize: 24.0, color: Colors.white),
             displayMedium: const TextStyle(fontSize: 20.0, color: Colors.white),
@@ -45,8 +44,8 @@ class _RiyaPlayAppState extends State<RiyaPlayApp> {
         ),
         iconTheme: const IconThemeData(color: Colors.white, size: 24.0),
         appBarTheme: AppBarTheme(
-          backgroundColor: const Color(0xFF111827),
-          titleTextStyle: GoogleFonts.poppins(
+          backgroundColor: const Color(0xFF0F0F0F),
+          titleTextStyle: GoogleFonts.roboto(
             fontSize: 20,
             fontWeight: FontWeight.w500,
             color: Colors.white,
@@ -86,68 +85,60 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   int _selectedIndex = 0;
-  bool _isSidebarOpen = false;
+  bool _isSidebarExpanded = false;
 
   final List<Widget> _screens = [
     const IndexScreen(),
     const TVChannelsScreen(),
     const CatalogScreen(),
     const FavoritesScreen(),
-    // const ProfileScreen(),
   ];
 
   final List<Map<String, dynamic>> _menuItems = [
     {
-      'icon': IconlyLight.home,
-      'activeIcon': IconlyBold.home,
+      'icon': Icons.home_outlined,
+      'activeIcon': Icons.home,
       'label': 'Bosh sahifa',
     },
-    {'icon': IconlyLight.video, 'activeIcon': IconlyBold.video, 'label': 'TV'},
     {
-      'icon': IconlyLight.category,
-      'activeIcon': IconlyBold.category,
-      'label': 'Katalog',
+      'icon': Icons.video_library_outlined,
+      'activeIcon': Icons.video_library,
+      'label': 'TV Kanallar',
     },
+    {'icon': Icons.apps_outlined, 'activeIcon': Icons.apps, 'label': 'Katalog'},
     {
-      'icon': IconlyLight.heart,
-      'activeIcon': IconlyBold.heart,
+      'icon': Icons.favorite_border,
+      'activeIcon': Icons.favorite,
       'label': 'Sevimlilar',
     },
     {
-      'icon': IconlyLight.profile,
-      'activeIcon': IconlyBold.profile,
+      'icon': Icons.person_outline,
+      'activeIcon': Icons.person,
       'label': 'Profil',
     },
   ];
 
-  late AnimationController _glowController;
-  late AnimationController _slideController;
-  late Animation<double> _slideAnimation;
+  late AnimationController _expandController;
+  late Animation<double> _expandAnimation;
   late FocusNode _contentFocusNode;
   late FocusNode _sidebarFocusNode;
 
   @override
   void initState() {
     super.initState();
-    _glowController = AnimationController(
-      duration: const Duration(milliseconds: 1500),
-      vsync: this,
-    )..repeat(reverse: true);
-
-    _slideController = AnimationController(
-      duration: const Duration(milliseconds: 350),
+    _expandController = AnimationController(
+      duration: const Duration(milliseconds: 200),
       vsync: this,
     );
 
-    _slideAnimation = CurvedAnimation(
-      parent: _slideController,
+    _expandAnimation = CurvedAnimation(
+      parent: _expandController,
       curve: Curves.easeInOut,
     );
 
     _contentFocusNode = FocusNode();
     _sidebarFocusNode = FocusNode();
 
-    // Ilova ochilganda content fokusda bo'lsin
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _contentFocusNode.requestFocus();
     });
@@ -155,8 +146,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    _glowController.dispose();
-    _slideController.dispose();
+    _expandController.dispose();
     _contentFocusNode.dispose();
     _sidebarFocusNode.dispose();
     super.dispose();
@@ -164,12 +154,12 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   void _toggleSidebar() {
     setState(() {
-      _isSidebarOpen = !_isSidebarOpen;
-      if (_isSidebarOpen) {
-        _slideController.forward();
+      _isSidebarExpanded = !_isSidebarExpanded;
+      if (_isSidebarExpanded) {
+        _expandController.forward();
         _sidebarFocusNode.requestFocus();
       } else {
-        _slideController.reverse();
+        _expandController.reverse();
         _contentFocusNode.requestFocus();
       }
     });
@@ -221,7 +211,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF111827),
+      backgroundColor: const Color(0xFF0F0F0F),
       body: Stack(
         children: [
           // Asosiy kontent
@@ -229,318 +219,196 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
             focusNode: _contentFocusNode,
             onKeyEvent: _handleContentKeyEvent,
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 350),
-              margin: EdgeInsets.only(left: _isSidebarOpen ? 280 : 0),
+              duration: const Duration(milliseconds: 200),
+              margin: EdgeInsets.only(left: _isSidebarExpanded ? 240 : 72),
               child: IndexedStack(index: _selectedIndex, children: _screens),
             ),
           ),
 
-          // Slide Sidebar
+          // YouTube TV Style Sidebar
           AnimatedBuilder(
-            animation: _slideAnimation,
+            animation: _expandAnimation,
             builder: (context, child) {
-              return Transform.translate(
-                offset: Offset(-280 + (_slideAnimation.value * 280), 0),
-                child: child,
-              );
-            },
-            child: Focus(
-              focusNode: _sidebarFocusNode,
-              onKeyEvent: _handleSidebarKeyEvent,
-              child: Container(
-                width: 280,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFF1F2937), Color(0xFF111827)],
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.5),
-                      blurRadius: 20,
-                      offset: const Offset(5, 0),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    // Logo va sarlavha
-                    Container(
-                      padding: const EdgeInsets.all(24),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Colors.cyanAccent, Colors.blue],
+              final width = 72 + (_expandAnimation.value * 168); // 72 to 240
+              return Container(
+                width: width,
+                decoration: const BoxDecoration(color: Color(0xFF212121)),
+                child: Focus(
+                  focusNode: _sidebarFocusNode,
+                  onKeyEvent: _handleSidebarKeyEvent,
+                  child: Column(
+                    children: [
+                      // Logo section
+                      Container(
+                        height: 64,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: Colors.red,
+                                borderRadius: BorderRadius.circular(8),
                               ),
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.cyanAccent.withOpacity(0.3),
-                                  blurRadius: 15,
-                                  spreadRadius: 2,
-                                ),
-                              ],
-                            ),
-                            child: const Icon(
-                              IconlyBold.video,
-                              color: Colors.white,
-                              size: 28,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'TPlay TV',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
+                              child: const Icon(
+                                Icons.play_arrow,
+                                color: Colors.white,
+                                size: 28,
                               ),
-                              Text(
-                                'Menyu',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 12,
-                                  color: Colors.white60,
+                            ),
+                            if (_isSidebarExpanded) ...[
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Text(
+                                  'TPlay TV',
+                                  style: GoogleFonts.roboto(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.white,
+                                  ),
+                                  overflow: TextOverflow.fade,
+                                  maxLines: 1,
                                 ),
                               ),
                             ],
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // Divider
-                    Container(
-                      height: 1,
-                      margin: const EdgeInsets.symmetric(horizontal: 24),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.transparent,
-                            Colors.cyanAccent.withOpacity(0.3),
-                            Colors.transparent,
                           ],
                         ),
                       ),
-                    ),
 
-                    const SizedBox(height: 24),
+                      // Divider
+                      Container(
+                        height: 1,
+                        color: Colors.white.withOpacity(0.1),
+                      ),
 
-                    // Menu items
-                    Expanded(
-                      child: ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: _menuItems.length,
-                        itemBuilder: (context, index) {
-                          final item = _menuItems[index];
-                          final isSelected = _selectedIndex == index;
+                      const SizedBox(height: 8),
 
-                          return TweenAnimationBuilder<double>(
-                            duration: const Duration(milliseconds: 300),
-                            tween: Tween(
-                              begin: 0.0,
-                              end: isSelected ? 1.0 : 0.0,
-                            ),
-                            builder: (context, value, child) {
-                              return Transform.scale(
-                                scale: 1.0 + value * 0.05,
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 300),
-                                  margin: const EdgeInsets.only(bottom: 12),
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 16,
-                                    horizontal: 20,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(16),
-                                    gradient:
-                                        isSelected
-                                            ? LinearGradient(
-                                              colors: [
-                                                Colors.cyanAccent.withOpacity(
-                                                  0.2,
-                                                ),
-                                                Colors.blue.withOpacity(0.1),
-                                              ],
-                                            )
-                                            : null,
-                                    border:
-                                        isSelected
-                                            ? Border.all(
-                                              color: Colors.cyanAccent,
-                                              width: 2,
-                                            )
-                                            : Border.all(
-                                              color: Colors.transparent,
-                                              width: 2,
-                                            ),
-                                    boxShadow:
-                                        isSelected
-                                            ? [
-                                              BoxShadow(
-                                                color: Colors.cyanAccent
-                                                    .withOpacity(
-                                                      0.3 +
-                                                          _glowController
-                                                                  .value *
-                                                              0.2,
-                                                    ),
-                                                blurRadius: 20,
-                                                spreadRadius: 2,
+                      // Menu items
+                      Expanded(
+                        child: ListView.builder(
+                          padding: EdgeInsets.zero,
+                          itemCount: _menuItems.length,
+                          itemBuilder: (context, index) {
+                            final item = _menuItems[index];
+                            final isSelected = _selectedIndex == index;
+
+                            return Container(
+                              margin: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color:
+                                    isSelected
+                                        ? Colors.white.withOpacity(0.15)
+                                        : Colors.transparent,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      _selectedIndex = index;
+                                    });
+                                  },
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    height: 56,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          isSelected
+                                              ? item['activeIcon']
+                                              : item['icon'],
+                                          color: Colors.white,
+                                          size: 24,
+                                        ),
+                                        if (_isSidebarExpanded) ...[
+                                          const SizedBox(width: 24),
+                                          Expanded(
+                                            child: Text(
+                                              item['label'],
+                                              style: GoogleFonts.roboto(
+                                                color: Colors.white,
+                                                fontSize: 14,
+                                                fontWeight:
+                                                    isSelected
+                                                        ? FontWeight.w500
+                                                        : FontWeight.w400,
                                               ),
-                                            ]
-                                            : [],
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      AnimatedBuilder(
-                                        animation: _glowController,
-                                        builder: (context, child) {
-                                          return Icon(
-                                            isSelected
-                                                ? item['activeIcon']
-                                                : item['icon'],
-                                            color:
-                                                isSelected
-                                                    ? Colors.cyanAccent
-                                                    : Colors.white70,
-                                            size: 28,
-                                          );
-                                        },
-                                      ),
-                                      const SizedBox(width: 16),
-                                      Expanded(
-                                        child: Text(
-                                          item['label'],
-                                          style: GoogleFonts.poppins(
-                                            color:
-                                                isSelected
-                                                    ? Colors.white
-                                                    : Colors.white70,
-                                            fontSize: 16,
-                                            fontWeight:
-                                                isSelected
-                                                    ? FontWeight.w600
-                                                    : FontWeight.normal,
+                                              overflow: TextOverflow.fade,
+                                              maxLines: 1,
+                                            ),
                                           ),
-                                        ),
-                                      ),
-                                      if (isSelected)
-                                        const Icon(
-                                          Icons.arrow_forward_ios,
-                                          color: Colors.cyanAccent,
-                                          size: 16,
-                                        ),
-                                    ],
+                                        ],
+                                      ],
+                                    ),
                                   ),
                                 ),
-                              );
-                            },
-                          );
-                        },
-                      ),
-                    ),
-
-                    // Ko'rsatma
-                    Container(
-                      margin: const EdgeInsets.all(24),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.black26,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Colors.cyanAccent.withOpacity(0.2),
+                              ),
+                            );
+                          },
                         ),
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(
-                            Icons.arrow_back,
-                            color: Colors.cyanAccent,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Menu',
-                            style: GoogleFonts.poppins(
-                              color: Colors.white70,
-                              fontSize: 12,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          const Icon(
-                            Icons.arrow_forward,
-                            color: Colors.cyanAccent,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Yopish',
-                            style: GoogleFonts.poppins(
-                              color: Colors.white70,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
 
-          // Menu indicator (yopilgan holatda)
-          if (!_isSidebarOpen)
-            Positioned(
-              left: 0,
-              top: MediaQuery.of(context).size.height / 2 - 60,
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 300),
-                opacity: _isSidebarOpen ? 0.0 : 1.0,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 20,
-                    horizontal: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.cyanAccent.withOpacity(0.2),
-                    borderRadius: const BorderRadius.only(
-                      topRight: Radius.circular(12),
-                      bottomRight: Radius.circular(12),
-                    ),
-                    border: Border.all(color: Colors.cyanAccent, width: 1),
-                  ),
-                  child: Column(
-                    children: [
-                      const Icon(
-                        Icons.arrow_forward_ios,
-                        color: Colors.cyanAccent,
-                        size: 20,
+                      // Settings at bottom
+                      Container(
+                        margin: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () {},
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              height: 56,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.settings_outlined,
+                                    color: Colors.white,
+                                    size: 24,
+                                  ),
+                                  if (_isSidebarExpanded) ...[
+                                    const SizedBox(width: 24),
+                                    Expanded(
+                                      child: Text(
+                                        'Sozlamalar',
+                                        style: GoogleFonts.roboto(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w400,
+                                        ),
+                                        overflow: TextOverflow.fade,
+                                        maxLines: 1,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
+
                       const SizedBox(height: 8),
-                      Text(
-                        'MENU',
-                        style: GoogleFonts.poppins(
-                          color: Colors.cyanAccent,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1,
-                        ),
-                      ),
                     ],
                   ),
                 ),
-              ),
-            ),
+              );
+            },
+          ),
         ],
       ),
     );
