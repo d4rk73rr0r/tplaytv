@@ -1060,7 +1060,7 @@ class _BannerCarouselState extends State<BannerCarousel> {
         _buttonFocusNodes.add(FocusNode());
       }
       // Focus on first banner's button on app launch
-      if (_buttonFocusNodes.isNotEmpty && mounted) {
+      if (_buttonFocusNodes.isNotEmpty) {
         _buttonFocusNodes[0].requestFocus();
       }
     });
@@ -1077,6 +1077,19 @@ class _BannerCarouselState extends State<BannerCarousel> {
   @override
   void didUpdateWidget(BannerCarousel oldWidget) {
     super.didUpdateWidget(oldWidget);
+    
+    // Handle dynamic banner count changes
+    final provider = Provider.of<IndexScreenProvider>(context, listen: false);
+    final banners = provider.banners;
+    
+    // Add missing focus nodes if banner count increased
+    if (_buttonFocusNodes.length < banners.length) {
+      final missingCount = banners.length - _buttonFocusNodes.length;
+      for (int i = 0; i < missingCount; i++) {
+        _buttonFocusNodes.add(FocusNode());
+      }
+    }
+    
     // Sync carousel with remote control selection and focus on button
     if (widget.isSelected && widget.selectedIndex != oldWidget.selectedIndex) {
       _carouselController.animateToPage(widget.selectedIndex);
@@ -1095,14 +1108,6 @@ class _BannerCarouselState extends State<BannerCarousel> {
   Widget build(BuildContext context) {
     final provider = Provider.of<IndexScreenProvider>(context);
     final banners = provider.banners;
-
-    // Ensure we have enough focus nodes (only add missing ones)
-    if (_buttonFocusNodes.length < banners.length) {
-      final missingCount = banners.length - _buttonFocusNodes.length;
-      for (int i = 0; i < missingCount; i++) {
-        _buttonFocusNodes.add(FocusNode());
-      }
-    }
 
     return CarouselSlider(
       carouselController: _carouselController,
