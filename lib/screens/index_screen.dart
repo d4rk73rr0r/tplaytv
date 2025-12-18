@@ -566,8 +566,9 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
       if (currentSection == sectionIndex) {
         const horizontalPadding = 24.0 * 2;
         const itemMargin = 8.0;
+        const visibleCardsCount = 5.5; // Match Categories and RecommendedFilmsWidget
         final itemWidth =
-            (screenWidth - horizontalPadding - itemMargin * 5.5) / 5.5;
+            (screenWidth - horizontalPadding - itemMargin * visibleCardsCount) / visibleCardsCount;
         return {'width': itemWidth, 'margin': itemMargin};
       }
       currentSection++;

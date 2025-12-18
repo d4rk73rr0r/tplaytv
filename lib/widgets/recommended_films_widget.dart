@@ -40,6 +40,11 @@ class RecommendedFilmsWidget extends StatefulWidget {
 
 class _RecommendedFilmsWidgetState extends State<RecommendedFilmsWidget> {
   int _previousSelectedIndex = -1;
+  
+  // Design constants to match Categories section
+  static const double visibleCardsCount = 5.5;
+  static const double horizontalPadding = 24.0 * 2;
+  static const double itemMargin = 8.0;
 
   @override
   void didUpdateWidget(RecommendedFilmsWidget oldWidget) {
@@ -59,14 +64,17 @@ class _RecommendedFilmsWidgetState extends State<RecommendedFilmsWidget> {
     }
   }
 
+  // Calculate item width based on screen size
+  double _calculateItemWidth(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    return (screenWidth - horizontalPadding - itemMargin * visibleCardsCount) / visibleCardsCount;
+  }
+
   // Scroll the selected item into view
   void _scrollToSelectedItem() {
     if (widget.scrollController == null || !widget.scrollController!.hasClients) return;
 
-    final screenWidth = MediaQuery.of(context).size.width;
-    const horizontalPadding = 24.0 * 2;
-    const itemMargin = 8.0;
-    final itemWidth = (screenWidth - horizontalPadding - itemMargin * 5.5) / 5.5;
+    final itemWidth = _calculateItemWidth(context);
     final itemExtent = itemWidth + itemMargin;
 
     final viewportWidth = widget.scrollController!.position.viewportDimension;
@@ -135,11 +143,7 @@ class _RecommendedFilmsWidgetState extends State<RecommendedFilmsWidget> {
   @override
   Widget build(BuildContext context) {
     // Calculate dimensions dynamically to match Categories section
-    final screenWidth = MediaQuery.of(context).size.width;
-    const horizontalPadding = 24.0 * 2;
-    const itemMargin = 8.0; // Match Categories section margin
-    // Display ~5.5 cards on screen to match Categories section
-    final itemWidth = (screenWidth - horizontalPadding - itemMargin * 5.5) / 5.5;
+    final itemWidth = _calculateItemWidth(context);
     final itemHeight = itemWidth * 1.5; // 2:3 aspect ratio to match Categories
     final sectionHeight = itemHeight + 100; // Height for image + text
 
@@ -259,7 +263,7 @@ class RecommendedFilmItem extends StatelessWidget {
                 ? files[0]['thumbnails']['small']['src']
                 : files[0]['link'] ?? 'https://placehold.co/320x180')
             : 'https://placehold.co/320x180';
-    final title = film['name_uz'] ?? 'Noma\'lum';
+    final title = film['name_uz'] ?? "Noma'lum";
     final year = film['year']?.toString() ?? '';
     final genres = film['genres'] ?? [];
     final genreName = genres.isNotEmpty ? genres[0]['name_uz'] ?? '' : '';
