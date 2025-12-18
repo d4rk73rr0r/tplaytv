@@ -1520,7 +1520,7 @@ class LatestViewedItem extends StatelessWidget {
         Navigator.push(context, createSlideRoute(FilmScreen(filmId: filmId)));
       },
       child: Padding(
-        padding: const EdgeInsets.only(right: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 5),
         child: SizedBox(
           width: 240,
           height: 151, // 135 + 16 for border space
@@ -1605,7 +1605,7 @@ class LatestViewedItem extends StatelessWidget {
                                   value: progress.clamp(0.0, 1.0),
                                   backgroundColor: Colors.grey[800],
                                   valueColor: const AlwaysStoppedAnimation<Color>(
-                                    Colors.yellow,
+                                    Color.fromARGB(255, 255, 59, 108),
                                   ),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
@@ -2507,7 +2507,7 @@ class ViewAllCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.only(right: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 5),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
