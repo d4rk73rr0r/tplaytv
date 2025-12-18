@@ -1044,7 +1044,6 @@ class BannerCarousel extends StatefulWidget {
 }
 
 class _BannerCarouselState extends State<BannerCarousel> {
-  int _currentIndex = 0;
   final CarouselSliderController _carouselController =
       CarouselSliderController();
 
@@ -1052,7 +1051,7 @@ class _BannerCarouselState extends State<BannerCarousel> {
   void didUpdateWidget(BannerCarousel oldWidget) {
     super.didUpdateWidget(oldWidget);
     // Sync carousel with remote control selection
-    if (widget.isSelected && widget.selectedIndex != _currentIndex) {
+    if (widget.isSelected && widget.selectedIndex != oldWidget.selectedIndex) {
       _carouselController.animateToPage(widget.selectedIndex);
     }
   }
@@ -1069,11 +1068,6 @@ class _BannerCarouselState extends State<BannerCarousel> {
         autoPlay: false,
         enlargeCenterPage: false,
         viewportFraction: 1.0,
-        onPageChanged: (index, reason) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
       ),
       items:
           banners.asMap().entries.map((entry) {
