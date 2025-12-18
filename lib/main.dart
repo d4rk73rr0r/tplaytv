@@ -139,9 +139,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     _contentFocusNode = FocusNode();
     _sidebarFocusNode = FocusNode();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _contentFocusNode.requestFocus();
-    });
+    // Don't request focus here - let the IndexScreen manage its own focus
   }
 
   @override
@@ -160,14 +158,9 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         _sidebarFocusNode.requestFocus();
       } else {
         _expandController.reverse();
-        _requestContentFocus();
+        // Don't explicitly request focus here - let the screen manage its own focus
+        // The screen's didChangeDependencies will handle focus restoration
       }
-    });
-  }
-
-  void _requestContentFocus() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _contentFocusNode.requestFocus();
     });
   }
 
@@ -224,7 +217,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           Focus(
             focusNode: _contentFocusNode,
             onKeyEvent: _handleContentKeyEvent,
-            skipTraversal: false,
+            skipTraversal: true,
+            canRequestFocus: false,
             descendantsAreFocusable: true,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
