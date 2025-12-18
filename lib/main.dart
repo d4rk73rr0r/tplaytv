@@ -196,12 +196,20 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
     if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
       _toggleSidebar();
+      // Ensure content gets focus properly
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _contentFocusNode.requestFocus();
+      });
       return KeyEventResult.handled;
     }
 
     if (event.logicalKey == LogicalKeyboardKey.select ||
         event.logicalKey == LogicalKeyboardKey.enter) {
       _toggleSidebar();
+      // Ensure content gets focus properly
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _contentFocusNode.requestFocus();
+      });
       return KeyEventResult.handled;
     }
 

@@ -1046,13 +1046,47 @@ class BannerCarousel extends StatefulWidget {
 class _BannerCarouselState extends State<BannerCarousel> {
   final CarouselSliderController _carouselController =
       CarouselSliderController();
+  final List<FocusNode> _buttonFocusNodes = [];
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize focus nodes after the first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final provider = Provider.of<IndexScreenProvider>(context, listen: false);
+      final bannersCount = provider.banners.length;
+      for (int i = 0; i < bannersCount; i++) {
+        _buttonFocusNodes.add(FocusNode());
+      }
+      // Focus on first banner's button on app launch
+      if (_buttonFocusNodes.isNotEmpty) {
+        _buttonFocusNodes[0].requestFocus();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    for (final node in _buttonFocusNodes) {
+      node.dispose();
+    }
+    super.dispose();
+  }
 
   @override
   void didUpdateWidget(BannerCarousel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Sync carousel with remote control selection
+    // Sync carousel with remote control selection and focus on button
     if (widget.isSelected && widget.selectedIndex != oldWidget.selectedIndex) {
       _carouselController.animateToPage(widget.selectedIndex);
+      // Focus on the button of the active banner
+      if (widget.selectedIndex < _buttonFocusNodes.length) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _buttonFocusNodes[widget.selectedIndex].canRequestFocus) {
+            _buttonFocusNodes[widget.selectedIndex].requestFocus();
+          }
+        });
+      }
     }
   }
 
@@ -1061,6 +1095,11 @@ class _BannerCarouselState extends State<BannerCarousel> {
     final provider = Provider.of<IndexScreenProvider>(context);
     final banners = provider.banners;
 
+    // Ensure we have enough focus nodes
+    while (_buttonFocusNodes.length < banners.length) {
+      _buttonFocusNodes.add(FocusNode());
+    }
+
     return CarouselSlider(
       carouselController: _carouselController,
       options: CarouselOptions(
@@ -1068,6 +1107,16 @@ class _BannerCarouselState extends State<BannerCarousel> {
         autoPlay: false,
         enlargeCenterPage: false,
         viewportFraction: 1.0,
+        onPageChanged: (index, reason) {
+          // Focus on button when banner changes
+          if (index < _buttonFocusNodes.length) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && _buttonFocusNodes[index].canRequestFocus) {
+                _buttonFocusNodes[index].requestFocus();
+              }
+            });
+          }
+        },
       ),
       items:
           banners.asMap().entries.map((entry) {
@@ -1077,7 +1126,13 @@ class _BannerCarouselState extends State<BannerCarousel> {
                 widget.isSelected && widget.selectedIndex == index;
             return Builder(
               builder: (BuildContext context) {
-                return BannerItem(banner: banner, isSelected: isSelected);
+                return BannerItem(
+                  banner: banner,
+                  isSelected: isSelected,
+                  buttonFocusNode: index < _buttonFocusNodes.length
+                      ? _buttonFocusNodes[index]
+                      : null,
+                );
               },
             );
           }).toList(),
@@ -1089,8 +1144,14 @@ class _BannerCarouselState extends State<BannerCarousel> {
 class BannerItem extends StatelessWidget {
   final dynamic banner;
   final bool isSelected;
+  final FocusNode? buttonFocusNode;
 
-  const BannerItem({super.key, required this.banner, this.isSelected = false});
+  const BannerItem({
+    super.key,
+    required this.banner,
+    this.isSelected = false,
+    this.buttonFocusNode,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1117,8 +1178,6 @@ class BannerItem extends StatelessWidget {
               offset: const Offset(0, 10),
             ),
           ],
-          border:
-              isSelected ? Border.all(color: Colors.yellow, width: 3) : null,
         ),
         child: Stack(
           children: [
@@ -1159,26 +1218,57 @@ class BannerItem extends StatelessWidget {
             Positioned(
               bottom: 40,
               left: 40,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 32,
-                  vertical: 16,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: const Color.fromARGB(255, 255, 59, 108),
-                    width: 2,
-                  ),
-                ),
-                child: const Text(
-                  'Watch',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
+              child: Focus(
+                focusNode: buttonFocusNode,
+                child: Builder(
+                  builder: (context) {
+                    final isFocused = Focus.of(context).hasFocus;
+                    return GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          createSlideRoute(FilmScreen(filmId: filmId)),
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 32,
+                          vertical: 16,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color.fromARGB(255, 255, 59, 108),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.3),
+                            width: 1,
+                          ),
+                          boxShadow: isFocused
+                              ? [
+                                  BoxShadow(
+                                    color: Colors.white.withOpacity(0.5),
+                                    spreadRadius: 2,
+                                    blurRadius: 4,
+                                  ),
+                                ]
+                              : [
+                                  BoxShadow(
+                                    color: const Color.fromARGB(255, 255, 59, 108),
+                                    spreadRadius: 1,
+                                    blurRadius: 0,
+                                  ),
+                                ],
+                        ),
+                        child: const Text(
+                          'Tomosha qilish',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
