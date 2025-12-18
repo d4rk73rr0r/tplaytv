@@ -200,13 +200,12 @@ class _RecommendedFilmsWidgetState extends State<RecommendedFilmsWidget> {
                       scrollDirection: Axis.horizontal,
                       cacheExtent: 500,
                       itemCount:
-                          widget.films.length > 6
-                              ? 7
-                              : widget.films.length, // Limit to 6 + 1 for View All
+                          widget.films.length +
+                          (widget.films.isNotEmpty ? 1 : 0), // All films + View All
                       itemExtent: itemWidth + itemMargin,
                       itemBuilder: (context, index) {
-                        // If we have more than 6 items and this is the 7th position, show View All card
-                        if (widget.films.length > 6 && index == 6) {
+                        // If this is the last position, show View All card
+                        if (index == widget.films.length) {
                           final itemSelected =
                               widget.isSelected && widget.selectedIndex == index;
                           return ViewAllCard(

@@ -709,12 +709,10 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
       currentSection++;
     }
 
-    // Recommended section - limit to 7 items (6 + View All)
+    // Recommended section - all films + View All
     if (provider.recommendedFilms.isNotEmpty) {
       if (currentSection == sectionIndex) {
-        return provider.recommendedFilms.length > 6
-            ? 7
-            : provider.recommendedFilms.length;
+        return provider.recommendedFilms.length + 1;
       }
       currentSection++;
     }
@@ -780,8 +778,8 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
     // Recommended section
     if (provider.recommendedFilms.isNotEmpty) {
       if (currentSection == _selectedSectionIndex) {
-        // Check if View All card is selected
-        if (provider.recommendedFilms.length > 6 && _selectedItemIndex == 6) {
+        // Check if View All card is selected (last position)
+        if (_selectedItemIndex == provider.recommendedFilms.length) {
           Navigator.push(
             context,
             createSlideRoute(const RecommendedFilmsScreen()),
