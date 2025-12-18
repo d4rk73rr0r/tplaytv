@@ -224,6 +224,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           Focus(
             focusNode: _contentFocusNode,
             onKeyEvent: _handleContentKeyEvent,
+            skipTraversal: false,
+            descendantsAreFocusable: true,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               margin: EdgeInsets.only(left: _isSidebarExpanded ? 240 : 72),

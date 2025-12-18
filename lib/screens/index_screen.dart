@@ -250,6 +250,17 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Re-request focus when widget becomes active again (e.g., after returning from sidebar)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_contentFocusNode.hasFocus) {
+        _contentFocusNode.requestFocus();
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _connectivitySubscription?.cancel();
     _contentFocusNode.dispose();
@@ -896,6 +907,8 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
       body: Focus(
         focusNode: _contentFocusNode,
         onKeyEvent: _handleContentKeyEvent,
+        canRequestFocus: true,
+        skipTraversal: false,
         child: SafeArea(
           child: SingleChildScrollView(
             controller: _scrollController,
