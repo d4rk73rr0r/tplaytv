@@ -560,10 +560,15 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
       currentSection++;
     }
 
-    // Recommended Films section - uses RecommendedFilmsWidget
+    // Recommended Films section - dynamically calculated to match Categories
+    // Shows ~5.5 cards at a time
     if (provider.recommendedFilms.isNotEmpty) {
       if (currentSection == sectionIndex) {
-        return {'width': 160.0, 'margin': 16.0};
+        const horizontalPadding = 24.0 * 2;
+        const itemMargin = 8.0;
+        final itemWidth =
+            (screenWidth - horizontalPadding - itemMargin * 5.5) / 5.5;
+        return {'width': itemWidth, 'margin': itemMargin};
       }
       currentSection++;
     }
