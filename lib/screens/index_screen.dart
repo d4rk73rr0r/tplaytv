@@ -1053,13 +1053,14 @@ class _BannerCarouselState extends State<BannerCarousel> {
     super.initState();
     // Initialize focus nodes after the first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       final provider = Provider.of<IndexScreenProvider>(context, listen: false);
       final bannersCount = provider.banners.length;
       for (int i = 0; i < bannersCount; i++) {
         _buttonFocusNodes.add(FocusNode());
       }
       // Focus on first banner's button on app launch
-      if (_buttonFocusNodes.isNotEmpty) {
+      if (_buttonFocusNodes.isNotEmpty && mounted) {
         _buttonFocusNodes[0].requestFocus();
       }
     });
@@ -1095,9 +1096,12 @@ class _BannerCarouselState extends State<BannerCarousel> {
     final provider = Provider.of<IndexScreenProvider>(context);
     final banners = provider.banners;
 
-    // Ensure we have enough focus nodes
-    while (_buttonFocusNodes.length < banners.length) {
-      _buttonFocusNodes.add(FocusNode());
+    // Ensure we have enough focus nodes (only add missing ones)
+    if (_buttonFocusNodes.length < banners.length) {
+      final missingCount = banners.length - _buttonFocusNodes.length;
+      for (int i = 0; i < missingCount; i++) {
+        _buttonFocusNodes.add(FocusNode());
+      }
     }
 
     return CarouselSlider(
