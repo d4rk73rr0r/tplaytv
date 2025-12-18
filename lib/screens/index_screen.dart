@@ -699,12 +699,10 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
       currentSection++;
     }
 
-    // Latest viewed section - limit to 7 items (6 + View All)
+    // Latest viewed section - all items + View All
     if (provider.latestViewed.isNotEmpty) {
       if (currentSection == sectionIndex) {
-        return provider.latestViewed.length > 6
-            ? 7
-            : provider.latestViewed.length;
+        return provider.latestViewed.length + 1;
       }
       currentSection++;
     }
@@ -759,8 +757,8 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
     // Latest viewed section
     if (provider.latestViewed.isNotEmpty) {
       if (currentSection == _selectedSectionIndex) {
-        // Check if View All card is selected
-        if (provider.latestViewed.length > 6 && _selectedItemIndex == 6) {
+        // Check if View All card is selected (last position)
+        if (_selectedItemIndex == provider.latestViewed.length) {
           Navigator.push(context, createSlideRoute(const LatestViewedScreen()));
           return;
         }
@@ -1439,24 +1437,23 @@ class _LatestViewedSectionState extends State<LatestViewedSection> {
           ),
           const SizedBox(height: 12),
           SizedBox(
-            height: 140, // Adjusted for 16:9 aspect ratio
+            height: 151, // Updated to 135 + 16 for border space
             child: ListView.builder(
               controller: widget.scrollController,
               scrollDirection: Axis.horizontal,
               itemCount:
-                  latestViewed.length > 6
-                      ? 7
-                      : latestViewed.length, // Limit to 6 + 1 for View All
-              itemExtent: 250, // 16:9 uchun kengroq (250 x 140 ≈ 16:9)
+                  latestViewed.length +
+                  (latestViewed.isNotEmpty ? 1 : 0), // All items + View All
+              itemExtent: 250,
               cacheExtent: 500,
               itemBuilder: (context, index) {
-                // If we have more than 6 items and this is the 7th position, show View All card
-                if (latestViewed.length > 6 && index == 6) {
+                // If this is the last position, show View All card
+                if (index == latestViewed.length) {
                   final itemSelected =
                       widget.isSelected && widget.selectedIndex == index;
                   return ViewAllCard(
                     width: 240,
-                    height: 135, // 240 * 9/16 ≈ 135
+                    height: 135,
                     isSelected: itemSelected,
                     onTap: () {
                       Navigator.push(
@@ -1522,92 +1519,117 @@ class LatestViewedItem extends StatelessWidget {
       onTap: () {
         Navigator.push(context, createSlideRoute(FilmScreen(filmId: filmId)));
       },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        transform:
-            isSelected ? (Matrix4.identity()..scale(1.05)) : Matrix4.identity(),
-        width: 240,
-        height: 135,
-        margin: const EdgeInsets.only(right: 16),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.4),
-              blurRadius: 15,
-              spreadRadius: 2,
-              offset: const Offset(0, 8),
-            ),
-          ],
-          border:
-              isSelected ? Border.all(color: Colors.yellow, width: 3) : null,
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
+      child: Padding(
+        padding: const EdgeInsets.only(right: 3),
+        child: SizedBox(
+          width: 240,
+          height: 151, // 135 + 16 for border space
           child: Stack(
+            alignment: Alignment.center,
             children: [
-              CachedNetworkImage(
-                imageUrl: imageUrl,
-                width: double.infinity,
-                height: double.infinity,
-                fit: BoxFit.cover,
-                cacheManager: customCacheManager,
-              ),
-              Container(
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                transform:
+                    Matrix4.identity()..scale(isSelected ? 1.05 : 1.0),
+                transformAlignment: Alignment.center,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Colors.transparent, Colors.black.withOpacity(0.5)],
-                    stops: const [0.7, 1.0],
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.4),
+                      blurRadius: 15,
+                      spreadRadius: 2,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                  border:
+                      isSelected
+                          ? Border.all(
+                            color: const Color.fromARGB(255, 255, 59, 108),
+                            width: 2,
+                          )
+                          : null,
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: SizedBox(
+                    width: 240,
+                    height: 135,
+                    child: Stack(
+                      children: [
+                        CachedNetworkImage(
+                          imageUrl: imageUrl,
+                          width: double.infinity,
+                          height: double.infinity,
+                          fit: BoxFit.cover,
+                          cacheManager: customCacheManager,
+                        ),
+                        Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [Colors.transparent, Colors.black.withOpacity(0.5)],
+                              stops: const [0.7, 1.0],
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          bottom: 12,
+                          right: 12,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withOpacity(0.7),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  viewedTimeString,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              SizedBox(
+                                width: 220,
+                                child: LinearProgressIndicator(
+                                  value: progress.clamp(0.0, 1.0),
+                                  backgroundColor: Colors.grey[800],
+                                  valueColor: const AlwaysStoppedAnimation<Color>(
+                                    Colors.yellow,
+                                  ),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (isSelected)
+                          Container(
+                            width: 240,
+                            height: 135,
+                            color: Colors.white.withOpacity(0.12),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-              Positioned(
-                bottom: 12,
-                right: 12,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.7),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        viewedTimeString,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      width: 220,
-                      child: LinearProgressIndicator(
-                        value: progress.clamp(0.0, 1.0),
-                        backgroundColor: Colors.grey[800],
-                        valueColor: const AlwaysStoppedAnimation<Color>(
-                          Colors.yellow,
-                        ),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (isSelected) Container(color: Colors.white.withOpacity(0.1)),
             ],
           ),
         ),
       ),
     );
+  }
   }
 }
 
