@@ -315,6 +315,8 @@ class RecommendedFilmItem extends StatelessWidget {
                             height: itemHeight,
                             fit: BoxFit.cover,
                             cacheManager: customCacheManager,
+                            maxHeightDiskCache: 400,
+                            fadeInDuration: const Duration(milliseconds: 300),
                             placeholder:
                                 (context, url) => Container(
                                   color: Colors.grey[800],
