@@ -6,7 +6,7 @@ import 'package:tplaytv/screens/tv_channels_screen.dart';
 import 'package:tplaytv/screens/catalog_screen.dart';
 import 'package:tplaytv/screens/favorites_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/services.dart';
+import 'package:dpad/dpad.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,49 +28,52 @@ class _RiyaPlayAppState extends State<RiyaPlayApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'TPlay TV',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        scaffoldBackgroundColor: const Color(0xFF0F0F0F),
-        textTheme: GoogleFonts.robotoTextTheme(
-          ThemeData.dark().textTheme.copyWith(
-            displayLarge: const TextStyle(fontSize: 24.0, color: Colors.white),
-            displayMedium: const TextStyle(fontSize: 20.0, color: Colors.white),
-            bodyLarge: const TextStyle(fontSize: 14.0, color: Colors.white),
-            bodyMedium: const TextStyle(fontSize: 12.0, color: Colors.white),
-            labelLarge: const TextStyle(fontSize: 14.0, color: Colors.white),
+    return DpadNavigator(
+      enabled: true,
+      child: MaterialApp(
+        title: 'TPlay TV',
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          scaffoldBackgroundColor: const Color(0xFF0F0F0F),
+          textTheme: GoogleFonts.robotoTextTheme(
+            ThemeData.dark().textTheme.copyWith(
+              displayLarge: const TextStyle(fontSize: 24.0, color: Colors.white),
+              displayMedium: const TextStyle(fontSize: 20.0, color: Colors.white),
+              bodyLarge: const TextStyle(fontSize: 14.0, color: Colors.white),
+              bodyMedium: const TextStyle(fontSize: 12.0, color: Colors.white),
+              labelLarge: const TextStyle(fontSize: 14.0, color: Colors.white),
+            ),
+          ),
+          iconTheme: const IconThemeData(color: Colors.white, size: 24.0),
+          appBarTheme: AppBarTheme(
+            backgroundColor: const Color(0xFF0F0F0F),
+            titleTextStyle: GoogleFonts.roboto(
+              fontSize: 20,
+              fontWeight: FontWeight.w500,
+              color: Colors.white,
+            ),
           ),
         ),
-        iconTheme: const IconThemeData(color: Colors.white, size: 24.0),
-        appBarTheme: AppBarTheme(
-          backgroundColor: const Color(0xFF0F0F0F),
-          titleTextStyle: GoogleFonts.roboto(
-            fontSize: 20,
-            fontWeight: FontWeight.w500,
-            color: Colors.white,
-          ),
-        ),
-      ),
-      builder: (context, child) {
-        return MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: const TextScaler.linear(1.0), boldText: false),
-          child: child!,
-        );
-      },
-      home: FutureBuilder<String?>(
-        future: _checkAuthToken(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasData && snapshot.data!.isNotEmpty) {
-            return const MainScreen();
-          }
-          return const AuthScreen();
+        builder: (context, child) {
+          return MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(1.0), boldText: false),
+            child: child!,
+          );
         },
+        home: FutureBuilder<String?>(
+          future: _checkAuthToken(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasData && snapshot.data!.isNotEmpty) {
+              return const MainScreen();
+            }
+            return const AuthScreen();
+          },
+        ),
       ),
     );
   }
@@ -160,10 +163,20 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       _isSidebarExpanded = !_isSidebarExpanded;
       if (_isSidebarExpanded) {
         _expandController.forward();
-        _sidebarFocusNode.requestFocus();
       } else {
         _expandController.reverse();
-        _requestContentFocus();
+      }
+    });
+    
+    // Use microtask to ensure focus operations happen after build
+    Future.microtask(() {
+      if (!mounted) return;
+      
+      if (_isSidebarExpanded) {
+        _sidebarFocusNode.requestFocus();
+      } else {
+        _sidebarFocusNode.unfocus();
+        _contentFocusNode.requestFocus();
       }
     });
   }
@@ -250,6 +263,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                 child: Focus(
                   focusNode: _sidebarFocusNode,
                   onKeyEvent: _handleSidebarKeyEvent,
+                  canRequestFocus: _isSidebarExpanded,
+                  skipTraversal: !_isSidebarExpanded,
                   child: Column(
                     children: [
                       // Logo section
