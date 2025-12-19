@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:tplaytv/screens/auth_screen.dart';
 import 'package:tplaytv/screens/index_screen.dart';
@@ -176,14 +177,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         _sidebarFocusNode.requestFocus();
       } else {
         _sidebarFocusNode.unfocus();
-        _contentFocusNode.requestFocus();
-      }
-    });
-  }
-
-  void _requestContentFocus() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
         _contentFocusNode.requestFocus();
       }
     });
