@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
@@ -16,6 +15,7 @@ import 'package:tplaytv/screens/genres_screen.dart';
 import 'package:tplaytv/screens/genres_films_screen.dart';
 import 'package:tplaytv/screens/categories_screen.dart';
 import 'package:tplaytv/utils/navigation.dart';
+import 'package:dpad/dpad.dart';
 
 // Kesh sozlamalari
 final customCacheManager = CacheManager(
