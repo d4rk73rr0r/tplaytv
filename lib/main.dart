@@ -160,12 +160,20 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       _isSidebarExpanded = !_isSidebarExpanded;
       if (_isSidebarExpanded) {
         _expandController.forward();
-        _sidebarFocusNode.requestFocus();
       } else {
         _expandController.reverse();
-        // Unfocus sidebar when minimizing to allow IndexScreen to regain focus
+      }
+    });
+    
+    // Use microtask to ensure focus operations happen after build
+    Future.microtask(() {
+      if (!mounted) return;
+      
+      if (_isSidebarExpanded) {
+        _sidebarFocusNode.requestFocus();
+      } else {
         _sidebarFocusNode.unfocus();
-        _requestContentFocus();
+        _contentFocusNode.requestFocus();
       }
     });
   }
