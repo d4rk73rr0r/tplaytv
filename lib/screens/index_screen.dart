@@ -905,81 +905,60 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
 
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Focus(
-        focusNode: _contentFocusNode,
-        onKeyEvent: _handleContentKeyEvent,
-        skipTraversal: false,
-        canRequestFocus: true,
-        child: SafeArea(
-          child: SingleChildScrollView(
-            controller: _scrollController,
-            physics: const AlwaysScrollableScrollPhysics(),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                provider.banners.isNotEmpty
-                    ? Container(
-                      key: _bannerKey,
-                      child: BannerCarousel(
-                        isSelected: _selectedSectionIndex == 0,
-                        selectedIndex: _selectedItemIndex,
-                      ),
-                    )
-                    : const SizedBox(
-                      height: 300,
-                      child: Center(
-                        child: Text(
-                          'Bannerlar mavjud emas',
-                          style: TextStyle(fontSize: 20, color: Colors.white),
-                        ),
-                      ),
-                    ),
-                if (provider.latestViewed.isNotEmpty)
-                  Container(
-                    key: _latestViewedKey,
-                    child: LatestViewedSection(
-                      isSelected:
-                          _selectedSectionIndex ==
-                          (provider.banners.isNotEmpty ? 1 : 0),
-                      selectedIndex: _selectedItemIndex,
-                      scrollController: _getScrollControllerForSection(
-                        provider.banners.isNotEmpty ? 1 : 0,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              provider.banners.isNotEmpty
+                  ? Container(
+                    key: _bannerKey,
+                    child: const BannerCarousel(),
+                  )
+                  : const SizedBox(
+                    height: 300,
+                    child: Center(
+                      child: Text(
+                        'Bannerlar mavjud emas',
+                        style: TextStyle(fontSize: 20, color: Colors.white),
                       ),
                     ),
                   ),
+              if (provider.latestViewed.isNotEmpty)
                 Container(
-                  key: _recommendedKey,
-                  child: RecommendedFilmsSection(
-                    isSelected:
-                        _selectedSectionIndex == _getRecommendedSectionIndex(),
-                    selectedIndex: _selectedItemIndex,
+                  key: _latestViewedKey,
+                  child: LatestViewedSection(
                     scrollController: _getScrollControllerForSection(
-                      _getRecommendedSectionIndex(),
+                      provider.banners.isNotEmpty ? 1 : 0,
                     ),
                   ),
                 ),
-                Container(
-                  key: _genresKey,
-                  child: GenresSection(
-                    onRetry: _onRetry,
-                    isSelected:
-                        _selectedSectionIndex == _getGenresSectionIndex(),
-                    selectedIndex: _selectedItemIndex,
-                    scrollController: _getScrollControllerForSection(
-                      _getGenresSectionIndex(),
-                    ),
+              Container(
+                key: _recommendedKey,
+                child: RecommendedFilmsSection(
+                  scrollController: _getScrollControllerForSection(
+                    _getRecommendedSectionIndex(),
                   ),
                 ),
-                CategoriesSection(
-                  baseSectionIndex: _getCategoriesSectionIndex(),
-                  selectedSectionIndex: _selectedSectionIndex,
-                  selectedItemIndex: _selectedItemIndex,
-                  categoryKeys: _categoryKeys,
-                  getScrollController: _getScrollControllerForSection,
+              ),
+              Container(
+                key: _genresKey,
+                child: GenresSection(
+                  onRetry: _onRetry,
+                  scrollController: _getScrollControllerForSection(
+                    _getGenresSectionIndex(),
+                  ),
                 ),
-                const SizedBox(height: 100),
-              ],
-            ),
+              ),
+              CategoriesSection(
+                baseSectionIndex: _getCategoriesSectionIndex(),
+                categoryKeys: _categoryKeys,
+                getScrollController: _getScrollControllerForSection,
+              ),
+              const SizedBox(height: 100),
+            ],
           ),
         ),
       ),
@@ -1044,13 +1023,8 @@ class ErrorScreen extends StatelessWidget {
 
 // BannerCarousel
 class BannerCarousel extends StatefulWidget {
-  final bool isSelected;
-  final int selectedIndex;
-
   const BannerCarousel({
     super.key,
-    this.isSelected = false,
-    this.selectedIndex = 0,
   });
 
   @override
@@ -1060,63 +1034,15 @@ class BannerCarousel extends StatefulWidget {
 class _BannerCarouselState extends State<BannerCarousel> {
   final CarouselSliderController _carouselController =
       CarouselSliderController();
-  final List<FocusNode> _buttonFocusNodes = [];
 
   @override
   void initState() {
     super.initState();
-    // Initialize focus nodes after the first frame
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final provider = Provider.of<IndexScreenProvider>(context, listen: false);
-      final bannersCount = provider.banners.length;
-      for (int i = 0; i < bannersCount; i++) {
-        _buttonFocusNodes.add(FocusNode());
-      }
-      // Focus on first banner's button on app launch
-      if (_buttonFocusNodes.isNotEmpty) {
-        _buttonFocusNodes[0].requestFocus();
-      }
-    });
   }
 
   @override
   void dispose() {
-    for (final node in _buttonFocusNodes) {
-      node.dispose();
-    }
     super.dispose();
-  }
-
-  @override
-  void didUpdateWidget(BannerCarousel oldWidget) {
-    super.didUpdateWidget(oldWidget);
-
-    // Handle dynamic banner count changes
-    final provider = Provider.of<IndexScreenProvider>(context, listen: false);
-    final banners = provider.banners;
-
-    // Add missing focus nodes if banner count increased
-    if (_buttonFocusNodes.length < banners.length) {
-      final missingCount = banners.length - _buttonFocusNodes.length;
-      for (int i = 0; i < missingCount; i++) {
-        _buttonFocusNodes.add(FocusNode());
-      }
-    }
-
-    // Sync carousel with remote control selection and focus on button
-    if (widget.isSelected && widget.selectedIndex != oldWidget.selectedIndex) {
-      _carouselController.animateToPage(widget.selectedIndex);
-      // Focus on the button of the active banner
-      if (widget.selectedIndex < _buttonFocusNodes.length) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted &&
-              _buttonFocusNodes[widget.selectedIndex].canRequestFocus) {
-            _buttonFocusNodes[widget.selectedIndex].requestFocus();
-          }
-        });
-      }
-    }
   }
 
   @override
