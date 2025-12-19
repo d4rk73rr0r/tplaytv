@@ -163,6 +163,9 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         _sidebarFocusNode.requestFocus();
       } else {
         _expandController.reverse();
+        // When minimizing sidebar, unfocus it and request focus on content
+        // The content focus node will receive focus, which will trigger IndexScreen to take focus
+        _sidebarFocusNode.unfocus();
         _requestContentFocus();
       }
     });
@@ -250,6 +253,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                 child: Focus(
                   focusNode: _sidebarFocusNode,
                   onKeyEvent: _handleSidebarKeyEvent,
+                  canRequestFocus: _isSidebarExpanded,
+                  skipTraversal: !_isSidebarExpanded,
                   child: Column(
                     children: [
                       // Logo section
