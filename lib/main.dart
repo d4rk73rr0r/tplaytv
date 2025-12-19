@@ -178,14 +178,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     });
   }
 
-  void _requestContentFocus() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _contentFocusNode.requestFocus();
-      }
-    });
-  }
-
   KeyEventResult _handleContentKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
 
