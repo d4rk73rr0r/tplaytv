@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:tplaytv/screens/auth_screen.dart';
 import 'package:tplaytv/screens/index_screen.dart';
@@ -156,14 +155,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     });
   }
 
-  void _onMenuItemSelected(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-    if (_isSidebarExpanded) {
-      _toggleSidebar();
-    }
-  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -174,9 +166,9 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
           // Asosiy kontent - wrapped with DpadFocusable to handle left arrow
           DpadFocusable(
             autofocus: !_isSidebarExpanded,
-            onFocus: (hasFocus) {
+            onFocus: () {
               // When content gets focus and sidebar is expanded, close it
-              if (hasFocus && _isSidebarExpanded) {
+              if (_isSidebarExpanded) {
                 _toggleSidebar();
               }
             },
@@ -380,10 +372,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                       },
                     ),
 
-
-                      const SizedBox(height: 8),
-                    ],
-                  ),
+                    const SizedBox(height: 8),
+                  ],
                 ),
               );
             },
