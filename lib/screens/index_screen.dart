@@ -203,9 +203,6 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
   int _selectedSectionIndex = 0;
   int _selectedItemIndex = 0;
 
-  // Delay for focus restoration after returning from sidebar
-  static const Duration _focusRestorationDelay = Duration(milliseconds: 50);
-
   // Scroll controller for vertical scrolling
   late ScrollController _scrollController;
 
