@@ -139,8 +139,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     _contentFocusNode = FocusNode();
     _sidebarFocusNode = FocusNode();
 
+    // Request initial focus on content area
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _contentFocusNode.requestFocus();
+      if (mounted) {
+        _contentFocusNode.requestFocus();
+      }
     });
   }
 
@@ -167,7 +170,9 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
   void _requestContentFocus() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _contentFocusNode.requestFocus();
+      if (mounted) {
+        _contentFocusNode.requestFocus();
+      }
     });
   }
 
@@ -226,6 +231,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
             onKeyEvent: _handleContentKeyEvent,
             skipTraversal: false,
             descendantsAreFocusable: true,
+            descendantsAreTraversable: true,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               margin: EdgeInsets.only(left: _isSidebarExpanded ? 240 : 72),

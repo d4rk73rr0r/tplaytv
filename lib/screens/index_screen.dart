@@ -203,6 +203,8 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
   int _selectedSectionIndex = 0;
   int _selectedItemIndex = 0;
 
+  // Delay for focus restoration after returning from sidebar
+
   // Scroll controller for vertical scrolling
   late ScrollController _scrollController;
 
@@ -253,6 +255,7 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     // Re-request focus when widget becomes active again (e.g., after returning from sidebar)
+    // Use addPostFrameCallback to ensure the widget tree is stable before requesting focus
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && !_contentFocusNode.hasFocus) {
         _contentFocusNode.requestFocus();
@@ -908,6 +911,7 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
         focusNode: _contentFocusNode,
         onKeyEvent: _handleContentKeyEvent,
         skipTraversal: false,
+        canRequestFocus: true,
         child: SafeArea(
           child: SingleChildScrollView(
             controller: _scrollController,
