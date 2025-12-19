@@ -163,8 +163,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         _sidebarFocusNode.requestFocus();
       } else {
         _expandController.reverse();
-        // When minimizing sidebar, unfocus it and request focus on content
-        // The content focus node will receive focus, which will trigger IndexScreen to take focus
+        // Unfocus sidebar when minimizing to allow IndexScreen to regain focus
         _sidebarFocusNode.unfocus();
         _requestContentFocus();
       }
