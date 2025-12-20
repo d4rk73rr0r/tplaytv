@@ -28,52 +28,49 @@ class _RiyaPlayAppState extends State<RiyaPlayApp> {
 
   @override
   Widget build(BuildContext context) {
-    return DpadNavigator(
-      enabled: true,
-      child: MaterialApp(
-        title: 'TPlay TV',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          scaffoldBackgroundColor: const Color(0xFF0F0F0F),
-          textTheme: GoogleFonts.robotoTextTheme(
-            ThemeData.dark().textTheme.copyWith(
-              displayLarge: const TextStyle(fontSize: 24.0, color: Colors.white),
-              displayMedium: const TextStyle(fontSize: 20.0, color: Colors.white),
-              bodyLarge: const TextStyle(fontSize: 14.0, color: Colors.white),
-              bodyMedium: const TextStyle(fontSize: 12.0, color: Colors.white),
-              labelLarge: const TextStyle(fontSize: 14.0, color: Colors.white),
-            ),
-          ),
-          iconTheme: const IconThemeData(color: Colors.white, size: 24.0),
-          appBarTheme: AppBarTheme(
-            backgroundColor: const Color(0xFF0F0F0F),
-            titleTextStyle: GoogleFonts.roboto(
-              fontSize: 20,
-              fontWeight: FontWeight.w500,
-              color: Colors.white,
-            ),
+    return MaterialApp(
+      title: 'TPlay TV',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        scaffoldBackgroundColor: const Color(0xFF0F0F0F),
+        textTheme: GoogleFonts.robotoTextTheme(
+          ThemeData.dark().textTheme.copyWith(
+            displayLarge: const TextStyle(fontSize: 24.0, color: Colors.white),
+            displayMedium: const TextStyle(fontSize: 20.0, color: Colors.white),
+            bodyLarge: const TextStyle(fontSize: 14.0, color: Colors.white),
+            bodyMedium: const TextStyle(fontSize: 12.0, color: Colors.white),
+            labelLarge: const TextStyle(fontSize: 14.0, color: Colors.white),
           ),
         ),
-        builder: (context, child) {
-          return MediaQuery(
-            data: MediaQuery.of(
-              context,
-            ).copyWith(textScaler: const TextScaler.linear(1.0), boldText: false),
-            child: child!,
-          );
+        iconTheme: const IconThemeData(color: Colors.white, size: 24.0),
+        appBarTheme: AppBarTheme(
+          backgroundColor: const Color(0xFF0F0F0F),
+          titleTextStyle: GoogleFonts.roboto(
+            fontSize: 20,
+            fontWeight: FontWeight.w500,
+            color: Colors.white,
+          ),
+        ),
+      ),
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: const TextScaler.linear(1.0), boldText: false),
+          child: child!,
+        );
+      },
+      home: FutureBuilder<String?>(
+        future: _checkAuthToken(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasData && snapshot.data!.isNotEmpty) {
+            return const MainScreen();
+          }
+          return const AuthScreen();
         },
-        home: FutureBuilder<String?>(
-          future: _checkAuthToken(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snapshot.hasData && snapshot.data!.isNotEmpty) {
-              return const MainScreen();
-            }
-            return const AuthScreen();
-          },
-        ),
       ),
     );
   }
@@ -155,7 +152,12 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
     });
   }
 
-
+  void _onMenuItemSelected(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+    _toggleSidebar();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -163,29 +165,28 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
       backgroundColor: const Color(0xFF0F0F0F),
       body: Stack(
         children: [
-          // Asosiy kontent - wrapped with DpadFocusable to handle left arrow
-          DpadFocusable(
-            autofocus: !_isSidebarExpanded,
-            onFocus: () {
-              // When content gets focus and sidebar is expanded, close it
-              if (_isSidebarExpanded) {
-                _toggleSidebar();
+          // Main content with dpad support
+          Dpad(
+            onExit: (direction) {
+              if (direction == DpadDirection.left) {
+                if (!_isSidebarExpanded) {
+                  _toggleSidebar();
+                }
               }
+              return true;
             },
-            builder: (context, isFocused, child) {
-              return AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                margin: EdgeInsets.only(left: _isSidebarExpanded ? 240 : 72),
-                child: IndexedStack(index: _selectedIndex, children: _screens),
-              );
-            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              margin: EdgeInsets.only(left: _isSidebarExpanded ? 240 : 72),
+              child: IndexedStack(index: _selectedIndex, children: _screens),
+            ),
           ),
 
-          // YouTube TV Style Sidebar
+          // Sidebar with dpad navigation
           AnimatedBuilder(
             animation: _expandAnimation,
             builder: (context, child) {
-              final width = 72 + (_expandAnimation.value * 168); // 72 to 240
+              final width = 72 + (_expandAnimation.value * 168);
               return Container(
                 width: width,
                 decoration: const BoxDecoration(color: Color(0xFF212121)),
@@ -237,7 +238,7 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
 
                     const SizedBox(height: 8),
 
-                    // Menu items
+                    // Menu items with dpad navigation
                     Expanded(
                       child: ListView.builder(
                         padding: EdgeInsets.zero,
@@ -246,130 +247,129 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
                           final item = _menuItems[index];
                           final isSelected = _selectedIndex == index;
 
-                          return DpadFocusable(
-                            autofocus: index == 0 && _isSidebarExpanded,
-                            onSelect: () {
-                              setState(() {
-                                _selectedIndex = index;
-                              });
-                              if (_isSidebarExpanded) {
+                          return Dpad(
+                            onFocus: (isFocused) {
+                              if (isFocused && !_isSidebarExpanded) {
                                 _toggleSidebar();
                               }
                             },
-                            builder: (context, isFocused, child) {
-                              return Container(
-                                margin: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: isFocused
-                                      ? Colors.white.withOpacity(0.25)
-                                      : (isSelected
-                                          ? Colors.white.withOpacity(0.15)
-                                          : Colors.transparent),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: isFocused
-                                        ? Colors.white.withOpacity(0.5)
-                                        : Colors.transparent,
-                                    width: 2,
-                                  ),
-                                ),
-                                child: Container(
-                                  height: 56,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                       Icon(
-                                        isSelected || isFocused
-                                            ? item['activeIcon']
-                                            : item['icon'],
-                                        color: Colors.white,
-                                        size: 24,
-                                      ),
-                                      if (_isSidebarExpanded) ...[
-                                        const SizedBox(width: 24),
-                                        Expanded(
-                                          child: Text(
-                                            item['label'],
-                                            style: GoogleFonts.roboto(
-                                              color: Colors.white,
-                                              fontSize: 14,
-                                              fontWeight:
-                                                  (isSelected || isFocused)
-                                                      ? FontWeight.w500
-                                                      : FontWeight.w400,
-                                            ),
-                                            overflow: TextOverflow.fade,
-                                            maxLines: 1,
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                              );
+                            onSelect: () {
+                              _onMenuItemSelected(index);
                             },
+                            onExit: (direction) {
+                              if (direction == DpadDirection.right && _isSidebarExpanded) {
+                                _toggleSidebar();
+                                return true;
+                              }
+                              return false;
+                            },
+                            child: Container(
+                              margin: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color:
+                                    isSelected
+                                        ? Colors.white.withOpacity(0.15)
+                                        : Colors.transparent,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Container(
+                                height: 56,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      isSelected
+                                          ? item['activeIcon']
+                                          : item['icon'],
+                                      color: Colors.white,
+                                      size: 24,
+                                    ),
+                                    if (_isSidebarExpanded) ...[
+                                      const SizedBox(width: 24),
+                                      Expanded(
+                                        child: Text(
+                                          item['label'],
+                                          style: GoogleFonts.roboto(
+                                            color: Colors.white,
+                                            fontSize: 14,
+                                            fontWeight:
+                                                isSelected
+                                                    ? FontWeight.w500
+                                                    : FontWeight.w400,
+                                          ),
+                                          overflow: TextOverflow.fade,
+                                          maxLines: 1,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
                           );
                         },
                       ),
                     ),
 
                     // Settings at bottom
-                    DpadFocusable(
+                    Dpad(
+                      onFocus: (isFocused) {
+                        if (isFocused && !_isSidebarExpanded) {
+                          _toggleSidebar();
+                        }
+                      },
                       onSelect: () {
-                        // Handle settings
+                        // Handle settings tap
                       },
-                      builder: (context, isFocused, child) {
-                        return Container(
-                          margin: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: isFocused
-                                ? Colors.white.withOpacity(0.25)
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: isFocused
-                                  ? Colors.white.withOpacity(0.5)
-                                  : Colors.transparent,
-                              width: 2,
-                            ),
+                      onExit: (direction) {
+                        if (direction == DpadDirection.right && _isSidebarExpanded) {
+                          _toggleSidebar();
+                          return true;
+                        }
+                        return false;
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Container(
+                          height: 56,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
                           ),
-                          child: Container(
-                            height: 56,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.settings_outlined,
-                                  color: Colors.white,
-                                  size: 24,
-                                ),
-                                if (_isSidebarExpanded) ...[
-                                  const SizedBox(width: 24),
-                                  Expanded(
-                                    child: Text(
-                                      'Sozlamalar',
-                                      style: GoogleFonts.roboto(
-                                        color: Colors.white,
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w400,
-                                      ),
-                                      overflow: TextOverflow.fade,
-                                      maxLines: 1,
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.settings_outlined,
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                              if (_isSidebarExpanded) ...[
+                                const SizedBox(width: 24),
+                                Expanded(
+                                  child: Text(
+                                    'Sozlamalar',
+                                    style: GoogleFonts.roboto(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w400,
                                     ),
+                                    overflow: TextOverflow.fade,
+                                    maxLines: 1,
                                   ),
-                                ],
+                                ),
                               ],
-                            ),
+                            ],
                           ),
-                        );
-                      },
+                        ),
+                      ),
                     ),
 
                     const SizedBox(height: 8),
