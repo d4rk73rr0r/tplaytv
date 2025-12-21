@@ -204,9 +204,8 @@ class _MainScreenState extends State<MainScreen>
   }
 
   KeyEventResult _handleContentKeyEvent(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
-      return KeyEventResult.ignored;
-    }
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
     if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
       _toggleSidebar();
       return KeyEventResult.handled;
@@ -215,10 +214,7 @@ class _MainScreenState extends State<MainScreen>
   }
 
   KeyEventResult _handleSidebarKeyEvent(FocusNode node, KeyEvent event) {
-    // KeyDown + KeyRepeat ni qo'llab-quvvatlash
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
-      return KeyEventResult.ignored;
-    }
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
 
     if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
       setState(() {

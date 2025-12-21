@@ -469,7 +469,6 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
 
   // Scroll to the selected section
   void _scrollToSelectedSection() {
-    // duration qisqartirildi (180 ms)
     GlobalKey? key;
     int currentSection = 0;
     final provider = Provider.of<IndexScreenProvider>(context, listen: false);
@@ -507,7 +506,7 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
     if (key != null && key.currentContext != null) {
       Scrollable.ensureVisible(
         key.currentContext!,
-        duration: const Duration(milliseconds: 180),
+        duration: const Duration(milliseconds: 400),
         curve: Curves.easeInOut,
         alignment: 0.0,
       );
@@ -537,17 +536,12 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
 
     final double maxOffset = controller.position.maxScrollExtent;
     final double clampedOffset = targetOffset.clamp(0.0, maxOffset);
-    final double distance = (clampedOffset - controller.offset).abs();
 
-    if (distance > 400) {
-      controller.jumpTo(clampedOffset);
-    } else {
-      controller.animateTo(
-        clampedOffset,
-        duration: const Duration(milliseconds: 150),
-        curve: Curves.easeOut,
-      );
-    }
+    controller.animateTo(
+      clampedOffset,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
   }
 
   Map<String, double> _getItemDimensionsForSection(
@@ -617,12 +611,8 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
     return _horizontalScrollControllers[sectionIndex]!;
   }
 
-  // TV Remote control key event handler
   KeyEventResult _handleContentKeyEvent(FocusNode node, KeyEvent event) {
-    // KeyDown + KeyRepeat ni qo'llab-quvvatlash
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
-      return KeyEventResult.ignored;
-    }
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
 
     final provider = Provider.of<IndexScreenProvider>(context, listen: false);
 
@@ -1323,17 +1313,12 @@ class _LatestViewedSectionState extends State<LatestViewedSection> {
 
     final maxOffset = widget.scrollController.position.maxScrollExtent;
     final clampedOffset = targetOffset.clamp(0.0, maxOffset);
-    final distance = (clampedOffset - widget.scrollController.offset).abs();
 
-    if (distance > 400) {
-      widget.scrollController.jumpTo(clampedOffset);
-    } else {
-      widget.scrollController.animateTo(
-        clampedOffset,
-        duration: const Duration(milliseconds: 150),
-        curve: Curves.easeOut,
-      );
-    }
+    widget.scrollController.animateTo(
+      clampedOffset,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
   }
 
   @override
@@ -1653,17 +1638,12 @@ class _GenresSectionState extends State<GenresSection> {
 
     final maxOffset = widget.scrollController.position.maxScrollExtent;
     final clampedOffset = targetOffset.clamp(0.0, maxOffset);
-    final distance = (clampedOffset - widget.scrollController.offset).abs();
 
-    if (distance > 400) {
-      widget.scrollController.jumpTo(clampedOffset);
-    } else {
-      widget.scrollController.animateTo(
-        clampedOffset,
-        duration: const Duration(milliseconds: 150),
-        curve: Curves.easeOut,
-      );
-    }
+    widget.scrollController.animateTo(
+      clampedOffset,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
   }
 
   @override
@@ -2057,17 +2037,12 @@ class _CategorySectionState extends State<CategorySection> {
 
     final maxOffset = widget.scrollController.position.maxScrollExtent;
     final clampedOffset = targetOffset.clamp(0.0, maxOffset);
-    final distance = (clampedOffset - widget.scrollController.offset).abs();
 
-    if (distance > 400) {
-      widget.scrollController.jumpTo(clampedOffset);
-    } else {
-      widget.scrollController.animateTo(
-        clampedOffset,
-        duration: const Duration(milliseconds: 150),
-        curve: Curves.easeOut,
-      );
-    }
+    widget.scrollController.animateTo(
+      clampedOffset,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
   }
 
   @override
