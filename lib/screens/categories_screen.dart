@@ -61,6 +61,10 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
   static const double _targetCards = 5.5; // ~5.5 kartani ko‘rsatish
   static const double _cardRatio = 1.5; // height = width * 1.5
   static const double _rowSpacing = 24.0; // qatordan qatorga masofa
+  static const double _chipsPadding = 16.0; // chips section padding
+  static const double _chipsHeight = 60.0; // chips section balandligi
+  static const double _gridTopPadding = 24.0; // grid yuqori padding
+  static const double _viewportPadding = 100.0; // scroll viewport padding
 
   @override
   void initState() {
@@ -452,11 +456,11 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     // Grid oldida turgan elementlar balandligini hisoblash
     double offsetBeforeGrid = 0.0;
     if (_hasChips && _categories.isNotEmpty) {
-      // Chips section: padding (16*2) + height (60) = 92
-      offsetBeforeGrid += 92.0;
+      // Chips section: padding va balandlik
+      offsetBeforeGrid += (_chipsPadding * 2) + _chipsHeight;
     }
     // Grid top padding
-    offsetBeforeGrid += 24.0;
+    offsetBeforeGrid += _gridTopPadding;
     
     // Tanlangan kartaning pozitsiyasini hisoblash (scroll boshidan)
     final cardTopPosition = offsetBeforeGrid + row * (verticalExtent + _rowSpacing);
@@ -468,18 +472,15 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     final viewportTop = currentScrollOffset;
     final viewportBottom = currentScrollOffset + viewportHeight;
     
-    // Padding qo'shish (kartani viewport chegarasidan uzoqroqda ushlab turish)
-    const double viewportPadding = 100.0;
-    
     double? targetOffset;
     
     // Agar karta viewport yuqorisidan chiqib ketgan bo'lsa
-    if (cardTopPosition < viewportTop + viewportPadding) {
-      targetOffset = (cardTopPosition - viewportPadding).clamp(0.0, _scrollController.position.maxScrollExtent);
+    if (cardTopPosition < viewportTop + _viewportPadding) {
+      targetOffset = (cardTopPosition - _viewportPadding).clamp(0.0, _scrollController.position.maxScrollExtent);
     }
     // Agar karta viewport pastidan chiqib ketgan bo'lsa
-    else if (cardBottomPosition > viewportBottom - viewportPadding) {
-      targetOffset = (cardBottomPosition - viewportHeight + viewportPadding).clamp(0.0, _scrollController.position.maxScrollExtent);
+    else if (cardBottomPosition > viewportBottom - _viewportPadding) {
+      targetOffset = (cardBottomPosition - viewportHeight + _viewportPadding).clamp(0.0, _scrollController.position.maxScrollExtent);
     }
     
     // Faqat kerak bo'lganda scroll qilish
@@ -758,7 +759,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(
                     _gridLeftPad,
-                    24,
+                    _gridTopPadding,
                     _gridRightPad,
                     0,
                   ),
