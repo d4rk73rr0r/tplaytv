@@ -53,9 +53,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
   bool get _hasChips => widget.initialCategory == null;
 
   // Layout (IndexScreen Categories bilan mos)
-  static const double _gridLeftPad = 24.0;
-  static const double _gridRightPad = 16.0;
-  static const double _horizontalPadding = _gridLeftPad + _gridRightPad; // 40
+  static const double _horizontalPadding = 24.0 * 2; // 48
   static const double _itemMargin = 8.0;
   static const double _gridSpacing = 8.0;
   static const double _targetCards = 5.5; // ~5.5 kartani ko‘rsatish
@@ -424,11 +422,10 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
 
   int _rowSizeForWidth() {
     final screenWidth = MediaQuery.of(context).size.width;
-    final availableWidth =
-        screenWidth - _gridLeftPad - _gridRightPad; // SliverPadding bilan mos
     final itemWidth =
-        (availableWidth - _itemMargin * _targetCards) / _targetCards;
-    final count = (availableWidth / (itemWidth + _itemMargin)).floor().clamp(
+        (screenWidth - _horizontalPadding - _itemMargin * _targetCards) /
+        _targetCards;
+    final count = (screenWidth / (itemWidth + _itemMargin)).floor().clamp(
       1,
       10,
     );
@@ -439,10 +436,9 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     if (!_scrollController.hasClients || _films.isEmpty) return;
 
     final screenWidth = MediaQuery.of(context).size.width;
-    final availableWidth =
-        screenWidth - _gridLeftPad - _gridRightPad; // SliverPadding bilan mos
     final itemWidth =
-        (availableWidth - _itemMargin * _targetCards) / _targetCards;
+        (screenWidth - _horizontalPadding - _itemMargin * _targetCards) /
+        _targetCards;
     final itemHeight = itemWidth * _cardRatio;
     final rowSize = _rowSizeForWidth();
 
@@ -468,10 +464,9 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
 
   Widget _buildSkeletonLoader() {
     final screenWidth = MediaQuery.of(context).size.width;
-    final availableWidth =
-        screenWidth - _gridLeftPad - _gridRightPad; // SliverPadding bilan mos
     final itemWidth =
-        (availableWidth - _itemMargin * _targetCards) / _targetCards;
+        (screenWidth - _horizontalPadding - _itemMargin * _targetCards) /
+        _targetCards;
     final itemHeight = itemWidth * _cardRatio;
 
     return GridView.builder(
@@ -516,10 +511,9 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
             : (widget.initialCategory?['title_uz'] ?? "Kategoriyalar");
 
     final screenWidth = MediaQuery.of(context).size.width;
-    final availableWidth =
-        screenWidth - _gridLeftPad - _gridRightPad; // SliverPadding bilan mos
     final itemWidth =
-        (availableWidth - _itemMargin * _targetCards) / _targetCards;
+        (screenWidth - _horizontalPadding - _itemMargin * _targetCards) /
+        _targetCards;
     final itemHeight = itemWidth * _cardRatio;
 
     return Scaffold(
@@ -721,60 +715,50 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                   ),
 
                 // Grid (5.5 karta ko‘rinishi, aniq balandlik)
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(
-                    _gridLeftPad,
-                    24,
-                    _gridRightPad,
-                    0,
-                  ),
-                  sliver: SliverGrid(
-                    gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                      maxCrossAxisExtent:
-                          ((MediaQuery.of(context).size.width -
-                                  _horizontalPadding -
-                                  _itemMargin * _targetCards) /
-                              _targetCards) +
-                          _itemMargin,
-                      mainAxisSpacing: _rowSpacing,
-                      crossAxisSpacing: _itemMargin,
-                      childAspectRatio: () {
-                        final screenWidth = MediaQuery.of(context).size.width;
-                        final availableWidth =
-                            screenWidth - _gridLeftPad - _gridRightPad;
-                        final w =
-                            (availableWidth - _itemMargin * _targetCards) /
-                            _targetCards;
-                        final h = w * _cardRatio + kTextBlockHeight;
-                        return w / h;
-                      }(),
-                    ),
-                    delegate: SliverChildBuilderDelegate((context, index) {
-                      final film = _films[index];
-                      final isSelected =
-                          !_isOnChips && index == _selectedFilmIndex;
-                      final availableWidth =
-                          MediaQuery.of(context).size.width -
-                          _gridLeftPad -
-                          _gridRightPad;
-                      final itemW =
-                          (availableWidth - _itemMargin * _targetCards) /
+                SliverGrid(
+                  gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent:
+                        ((MediaQuery.of(context).size.width -
+                                _horizontalPadding -
+                                _itemMargin * _targetCards) /
+                            _targetCards) +
+                        _itemMargin,
+                    mainAxisSpacing: _rowSpacing,
+                    crossAxisSpacing: _itemMargin,
+                    childAspectRatio: () {
+                      final screenWidth = MediaQuery.of(context).size.width;
+                      final w =
+                          (screenWidth -
+                              _horizontalPadding -
+                              _itemMargin * _targetCards) /
                           _targetCards;
-                      final itemH = itemW * _cardRatio;
-                      return FilmCard(
-                        film: film,
-                        isSelected: isSelected,
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            createSlideRoute(FilmScreen(filmId: film['id'])),
-                          ).then((_) => _pageFocusNode.requestFocus());
-                        },
-                        itemWidth: itemW,
-                        itemHeight: itemH,
-                      );
-                    }, childCount: _films.length),
+                      final h = w * _cardRatio + kTextBlockHeight;
+                      return w / h;
+                    }(),
                   ),
+                  delegate: SliverChildBuilderDelegate((context, index) {
+                    final film = _films[index];
+                    final isSelected =
+                        !_isOnChips && index == _selectedFilmIndex;
+                    final itemW =
+                        (MediaQuery.of(context).size.width -
+                            _horizontalPadding -
+                            _itemMargin * _targetCards) /
+                        _targetCards;
+                    final itemH = itemW * _cardRatio;
+                    return FilmCard(
+                      film: film,
+                      isSelected: isSelected,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          createSlideRoute(FilmScreen(filmId: film['id'])),
+                        ).then((_) => _pageFocusNode.requestFocus());
+                      },
+                      itemWidth: itemW,
+                      itemHeight: itemH,
+                    );
+                  }, childCount: _films.length),
                 ),
 
                 if (_isLoading && _films.isNotEmpty)
@@ -862,7 +846,7 @@ class FilmCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+        padding: const EdgeInsets.only(right: 3),
         child: SizedBox(
           width: itemWidth,
           height: itemHeight + kTextBlockHeight, // butun hujayra balandligi
