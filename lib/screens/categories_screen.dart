@@ -439,6 +439,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     if (!_scrollController.hasClients || _films.isEmpty) return;
 
     final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
     final availableWidth =
         screenWidth - _gridLeftPad - _gridRightPad; // SliverPadding bilan mos
     final itemWidth =
@@ -448,19 +449,44 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
 
     final row = _selectedFilmIndex ~/ rowSize;
     final verticalExtent = itemHeight + kTextBlockHeight;
-    final targetOffset = row * (verticalExtent + _rowSpacing);
-    final maxOffset = _scrollController.position.maxScrollExtent;
-    final clamped = targetOffset.clamp(0.0, maxOffset);
-    final distance = (clamped - _scrollController.offset).abs();
-
-    if (distance > 600) {
-      _scrollController.jumpTo(clamped);
-    } else {
-      _scrollController.animateTo(
-        clamped,
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOut,
-      );
+    
+    // Tanlangan kartaning pozitsiyasini hisoblash (grid boshidan)
+    final cardTopPosition = row * (verticalExtent + _rowSpacing);
+    final cardBottomPosition = cardTopPosition + verticalExtent;
+    
+    // Hozirgi viewport chegaralarini hisoblash
+    final currentScrollOffset = _scrollController.offset;
+    final viewportHeight = _scrollController.position.viewportDimension;
+    final viewportTop = currentScrollOffset;
+    final viewportBottom = currentScrollOffset + viewportHeight;
+    
+    // Padding qo'shish (kartani viewport chegarasidan uzoqroqda ushlab turish)
+    const double viewportPadding = 100.0;
+    
+    double? targetOffset;
+    
+    // Agar karta viewport yuqorisidan chiqib ketgan bo'lsa
+    if (cardTopPosition < viewportTop + viewportPadding) {
+      targetOffset = (cardTopPosition - viewportPadding).clamp(0.0, _scrollController.position.maxScrollExtent);
+    }
+    // Agar karta viewport pastidan chiqib ketgan bo'lsa
+    else if (cardBottomPosition > viewportBottom - viewportPadding) {
+      targetOffset = (cardBottomPosition - viewportHeight + viewportPadding).clamp(0.0, _scrollController.position.maxScrollExtent);
+    }
+    
+    // Faqat kerak bo'lganda scroll qilish
+    if (targetOffset != null) {
+      final distance = (targetOffset - _scrollController.offset).abs();
+      
+      if (distance > 600) {
+        _scrollController.jumpTo(targetOffset);
+      } else {
+        _scrollController.animateTo(
+          targetOffset,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+        );
+      }
     }
   }
 
