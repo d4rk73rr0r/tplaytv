@@ -61,10 +61,10 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
   static const double _targetCards = 5.5; // ~5.5 kartani ko‘rsatish
   static const double _cardRatio = 1.5; // height = width * 1.5
   static const double _rowSpacing = 24.0; // qatordan qatorga masofa
-  static const double _chipsPadding = 16.0; // chips section padding
-  static const double _chipsHeight = 60.0; // chips section balandligi
+  static const double _chipsPadding = 16.0; // chips padding
+  static const double _chipsHeight = 60.0; // chips balandligi
   static const double _gridTopPadding = 24.0; // grid yuqori padding
-  static const double _viewportPadding = 100.0; // scroll viewport padding
+  static const double _viewportPadding = 100.0; // viewport padding
 
   @override
   void initState() {
@@ -608,12 +608,12 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
               slivers: [
                 if (_hasChips)
                   SliverPadding(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(_chipsPadding),
                     sliver: SliverToBoxAdapter(
                       child:
                           _categories.isNotEmpty
                               ? SizedBox(
-                                height: 60,
+                                height: _chipsHeight,
                                 child: ListView.builder(
                                   scrollDirection: Axis.horizontal,
                                   physics: const BouncingScrollPhysics(),
