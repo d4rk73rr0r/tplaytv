@@ -19,6 +19,23 @@ final customCacheManager = CacheManager(
 // Matn blokining balandligi (global, FilmCard ham foydalanadi)
 const double kTextBlockHeight = 60.0;
 
+// Grid metrikasi (SliverGrid hisoblari bilan mos)
+class _GridMetrics {
+  final double itemWidth;
+  final double itemHeight;
+  final double rowHeight;
+  final int rowSize;
+  final double topPadding;
+
+  const _GridMetrics({
+    required this.itemWidth,
+    required this.itemHeight,
+    required this.rowHeight,
+    required this.rowSize,
+    required this.topPadding,
+  });
+}
+
 class CategoriesScreen extends StatefulWidget {
   final Map<String, dynamic>? initialCategory;
 
@@ -100,6 +117,35 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     super.dispose();
   }
+
+  // -------- Grid metrics --------
+
+  _GridMetrics _gridMetrics(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final availableWidth = screenWidth - _gridLeftPad - _gridRightPad;
+
+    // SliverGridDelegateWithMaxCrossAxisExtent’da ishlatiladigan extents bilan mos
+    final maxCrossAxisExtent =
+        ((screenWidth - _horizontalPadding - _itemMargin * _targetCards) /
+            _targetCards) +
+        _itemMargin;
+
+    final rowSize = (availableWidth / maxCrossAxisExtent).floor().clamp(1, 10);
+    final itemWidth = (availableWidth - _itemMargin * rowSize) / rowSize;
+    final itemHeight = itemWidth * _cardRatio;
+    // Row balandligi: karta + matn + rowSpacing (griddagi real vertikal ajratma)
+    final rowHeight = itemHeight + kTextBlockHeight + _rowSpacing;
+
+    return _GridMetrics(
+      itemWidth: itemWidth,
+      itemHeight: itemHeight,
+      rowHeight: rowHeight,
+      rowSize: rowSize,
+      topPadding: 24, // SliverPadding(top: 24) bilan mos
+    );
+  }
+
+  int _rowSizeForWidth() => _gridMetrics(context).rowSize;
 
   // -------- Fetching --------
 
@@ -351,7 +397,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
             _isOnChips = false;
             _selectedFilmIndex = 0;
           });
-          _scrollToFilmIndex();
+          _scrollToFilmIndex(force: true);
         }
         return KeyEventResult.handled;
       }
@@ -362,15 +408,21 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
 
       if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
         if (_selectedFilmIndex < lastIndex) {
+          final prevRow = _selectedFilmIndex ~/ rowSize;
           setState(() => _selectedFilmIndex++);
-          _scrollToFilmIndex();
+          final newRow = _selectedFilmIndex ~/ rowSize;
+          if (newRow != prevRow) _scrollToFilmIndex();
         }
         return KeyEventResult.handled;
       }
       if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
         if (_selectedFilmIndex > 0) {
+          final prevRow = _selectedFilmIndex ~/ rowSize;
           setState(() => _selectedFilmIndex--);
-          _scrollToFilmIndex();
+          final newRow = _selectedFilmIndex ~/ rowSize;
+          if (newRow != prevRow) {
+            _scrollToFilmIndex();
+          }
           return KeyEventResult.handled;
         } else {
           if (_hasChips) {
@@ -385,7 +437,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
         final nextRowIdx = _selectedFilmIndex + rowSize;
         if (nextRowIdx <= lastIndex) {
           setState(() => _selectedFilmIndex = nextRowIdx);
-          _scrollToFilmIndex();
+          _scrollToFilmIndex(force: true);
         } else if (_hasMore && !_isLoading) {
           _fetchFilms();
         }
@@ -395,7 +447,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
         final prevRowIdx = _selectedFilmIndex - rowSize;
         if (prevRowIdx >= 0) {
           setState(() => _selectedFilmIndex = prevRowIdx);
-          _scrollToFilmIndex();
+          _scrollToFilmIndex(force: true);
         } else {
           if (_hasChips) {
             setState(() {
@@ -422,38 +474,26 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     return KeyEventResult.ignored;
   }
 
-  int _rowSizeForWidth() {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final availableWidth =
-        screenWidth - _gridLeftPad - _gridRightPad; // SliverPadding bilan mos
-    final itemWidth =
-        (availableWidth - _itemMargin * _targetCards) / _targetCards;
-    final count = (availableWidth / (itemWidth + _itemMargin)).floor().clamp(
-      1,
-      10,
-    );
-    return count;
-  }
-
-  void _scrollToFilmIndex() {
+  void _scrollToFilmIndex({bool force = false}) {
     if (!_scrollController.hasClients || _films.isEmpty) return;
 
-    final screenWidth = MediaQuery.of(context).size.width;
-    final availableWidth =
-        screenWidth - _gridLeftPad - _gridRightPad; // SliverPadding bilan mos
-    final itemWidth =
-        (availableWidth - _itemMargin * _targetCards) / _targetCards;
-    final itemHeight = itemWidth * _cardRatio;
-    final rowSize = _rowSizeForWidth();
+    final metrics = _gridMetrics(context);
+    final rowSize = metrics.rowSize;
+    final targetRow = (_selectedFilmIndex ~/ rowSize);
+    final targetOffset = metrics.topPadding + targetRow * metrics.rowHeight;
 
-    final row = _selectedFilmIndex ~/ rowSize;
-    final verticalExtent = itemHeight + kTextBlockHeight;
-    final targetOffset = row * (verticalExtent + _rowSpacing);
+    final currentRow = ((_scrollController.offset - metrics.topPadding) /
+            metrics.rowHeight)
+        .round()
+        .clamp(0, targetRow);
+
+    if (!force && currentRow == targetRow) return;
+
     final maxOffset = _scrollController.position.maxScrollExtent;
     final clamped = targetOffset.clamp(0.0, maxOffset);
     final distance = (clamped - _scrollController.offset).abs();
 
-    if (distance > 600) {
+    if (distance > 800) {
       _scrollController.jumpTo(clamped);
     } else {
       _scrollController.animateTo(
@@ -467,12 +507,9 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
   // -------- UI --------
 
   Widget _buildSkeletonLoader() {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final availableWidth =
-        screenWidth - _gridLeftPad - _gridRightPad; // SliverPadding bilan mos
-    final itemWidth =
-        (availableWidth - _itemMargin * _targetCards) / _targetCards;
-    final itemHeight = itemWidth * _cardRatio;
+    final metrics = _gridMetrics(context);
+    final itemWidth = metrics.itemWidth;
+    final itemHeight = metrics.itemHeight;
 
     return GridView.builder(
       shrinkWrap: true,
@@ -515,12 +552,9 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
             ? (_selectedCategory['title_uz'] ?? "Kategoriyalar")
             : (widget.initialCategory?['title_uz'] ?? "Kategoriyalar");
 
-    final screenWidth = MediaQuery.of(context).size.width;
-    final availableWidth =
-        screenWidth - _gridLeftPad - _gridRightPad; // SliverPadding bilan mos
-    final itemWidth =
-        (availableWidth - _itemMargin * _targetCards) / _targetCards;
-    final itemHeight = itemWidth * _cardRatio;
+    final metrics = _gridMetrics(context);
+    final itemWidth = metrics.itemWidth;
+    final itemHeight = metrics.itemHeight;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -730,37 +764,16 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                   ),
                   sliver: SliverGrid(
                     gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                      maxCrossAxisExtent:
-                          ((MediaQuery.of(context).size.width -
-                                  _horizontalPadding -
-                                  _itemMargin * _targetCards) /
-                              _targetCards) +
-                          _itemMargin,
+                      maxCrossAxisExtent: itemWidth + _itemMargin,
                       mainAxisSpacing: _rowSpacing,
                       crossAxisSpacing: _itemMargin,
-                      childAspectRatio: () {
-                        final screenWidth = MediaQuery.of(context).size.width;
-                        final availableWidth =
-                            screenWidth - _gridLeftPad - _gridRightPad;
-                        final w =
-                            (availableWidth - _itemMargin * _targetCards) /
-                            _targetCards;
-                        final h = w * _cardRatio + kTextBlockHeight;
-                        return w / h;
-                      }(),
+                      childAspectRatio:
+                          itemWidth / (itemHeight + kTextBlockHeight),
                     ),
                     delegate: SliverChildBuilderDelegate((context, index) {
                       final film = _films[index];
                       final isSelected =
                           !_isOnChips && index == _selectedFilmIndex;
-                      final availableWidth =
-                          MediaQuery.of(context).size.width -
-                          _gridLeftPad -
-                          _gridRightPad;
-                      final itemW =
-                          (availableWidth - _itemMargin * _targetCards) /
-                          _targetCards;
-                      final itemH = itemW * _cardRatio;
                       return FilmCard(
                         film: film,
                         isSelected: isSelected,
@@ -770,8 +783,8 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                             createSlideRoute(FilmScreen(filmId: film['id'])),
                           ).then((_) => _pageFocusNode.requestFocus());
                         },
-                        itemWidth: itemW,
-                        itemHeight: itemH,
+                        itemWidth: itemWidth,
+                        itemHeight: itemHeight,
                       );
                     }, childCount: _films.length),
                   ),
