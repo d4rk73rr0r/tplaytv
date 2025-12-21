@@ -439,7 +439,6 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     if (!_scrollController.hasClients || _films.isEmpty) return;
 
     final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
     final availableWidth =
         screenWidth - _gridLeftPad - _gridRightPad; // SliverPadding bilan mos
     final itemWidth =
@@ -450,8 +449,17 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     final row = _selectedFilmIndex ~/ rowSize;
     final verticalExtent = itemHeight + kTextBlockHeight;
     
-    // Tanlangan kartaning pozitsiyasini hisoblash (grid boshidan)
-    final cardTopPosition = row * (verticalExtent + _rowSpacing);
+    // Grid oldida turgan elementlar balandligini hisoblash
+    double offsetBeforeGrid = 0.0;
+    if (_hasChips && _categories.isNotEmpty) {
+      // Chips section: padding (16*2) + height (60) = 92
+      offsetBeforeGrid += 92.0;
+    }
+    // Grid top padding
+    offsetBeforeGrid += 24.0;
+    
+    // Tanlangan kartaning pozitsiyasini hisoblash (scroll boshidan)
+    final cardTopPosition = offsetBeforeGrid + row * (verticalExtent + _rowSpacing);
     final cardBottomPosition = cardTopPosition + verticalExtent;
     
     // Hozirgi viewport chegaralarini hisoblash
