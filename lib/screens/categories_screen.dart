@@ -547,51 +547,12 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final titleText =
-        _selectedCategory != null
-            ? (_selectedCategory['title_uz'] ?? "Kategoriyalar")
-            : (widget.initialCategory?['title_uz'] ?? "Kategoriyalar");
-
     final metrics = _gridMetrics(context);
     final itemWidth = metrics.itemWidth;
     final itemHeight = metrics.itemHeight;
 
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black.withOpacity(0.8),
-        elevation: 4,
-        title: Text(
-          titleText,
-          style: const TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        leading: FocusScope(
-          child: Builder(
-            builder:
-                (context) => IconButton(
-                  icon: const Icon(
-                    Icons.arrow_back,
-                    color: Colors.white,
-                    size: 32,
-                  ),
-                  onPressed: () => Navigator.pop(context),
-                  tooltip: 'Orqaga',
-                  style: ButtonStyle(
-                    backgroundColor: MaterialStateProperty.resolveWith(
-                      (states) =>
-                          FocusScope.of(context).hasFocus
-                              ? Colors.blue[500]
-                              : Colors.blue[700],
-                    ),
-                  ),
-                ),
-          ),
-        ),
-      ),
       body: Focus(
         autofocus: true,
         focusNode: _pageFocusNode,
@@ -791,9 +752,16 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                 ),
 
                 if (_isLoading && _films.isNotEmpty)
-                  SliverPadding(
-                    padding: const EdgeInsets.all(24),
-                    sliver: SliverToBoxAdapter(child: _buildSkeletonLoader()),
+                  const SliverToBoxAdapter(
+                    child: Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24.0),
+                        child: CircularProgressIndicator(
+                          color: Colors.blue,
+                          strokeWidth: 3,
+                        ),
+                      ),
+                    ),
                   ),
                 if (!_hasMore && _films.isNotEmpty)
                   SliverToBoxAdapter(
