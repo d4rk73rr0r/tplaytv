@@ -155,7 +155,11 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
         !_isLoading &&
         _hasMore) {
       _debounce?.cancel();
-      _debounce = Timer(const Duration(milliseconds: 300), _fetchFilms);
+      _debounce = Timer(const Duration(milliseconds: 300), () {
+        if (mounted && !_isLoading && _hasMore) {
+          _fetchFilms();
+        }
+      });
     }
   }
 
@@ -547,12 +551,38 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final titleText =
+        _selectedCategory != null
+            ? (_selectedCategory['title_uz'] ?? "Kategoriyalar")
+            : (widget.initialCategory?['title_uz'] ?? "Kategoriyalar");
+
     final metrics = _gridMetrics(context);
     final itemWidth = metrics.itemWidth;
     final itemHeight = metrics.itemHeight;
 
     return Scaffold(
       backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black.withOpacity(0.8),
+        elevation: 4,
+        title: Text(
+          titleText,
+          style: const TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        leading: IconButton(
+          icon: const Icon(
+            Icons.arrow_back,
+            color: Colors.white,
+            size: 32,
+          ),
+          onPressed: () => Navigator.pop(context),
+          tooltip: 'Orqaga',
+        ),
+      ),
       body: Focus(
         autofocus: true,
         focusNode: _pageFocusNode,
