@@ -67,6 +67,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
   // Focus
   final FocusNode _pageFocusNode = FocusNode();
   bool _isOnChips = true;
+  bool _isOnBackButton = false;
   bool get _hasChips => widget.initialCategory == null;
 
   // Layout (IndexScreen Categories bilan mos)
@@ -155,7 +156,11 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
         !_isLoading &&
         _hasMore) {
       _debounce?.cancel();
-      _debounce = Timer(const Duration(milliseconds: 300), _fetchFilms);
+      _debounce = Timer(const Duration(milliseconds: 300), () {
+        if (mounted && !_isLoading && _hasMore) {
+          _fetchFilms();
+        }
+      });
     }
   }
 
@@ -370,6 +375,31 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     if (_categories.isEmpty) return KeyEventResult.ignored;
     final totalFilms = _films.length;
 
+    // Handle back button focus
+    if (_isOnBackButton) {
+      if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+        setState(() {
+          _isOnBackButton = false;
+          if (_hasChips) {
+            _isOnChips = true;
+          } else {
+            _isOnChips = false;
+            _selectedFilmIndex = 0;
+          }
+        });
+        if (!_hasChips && totalFilms > 0) {
+          _scrollToFilmIndex(force: true);
+        }
+        return KeyEventResult.handled;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.enter ||
+          event.logicalKey == LogicalKeyboardKey.select) {
+        Navigator.pop(context);
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
+
     if (_isOnChips && _hasChips) {
       if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
         if (_selectedCategoryIndex < _categories.length - 1) {
@@ -389,6 +419,12 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
           });
           _fetchFilms(isRefresh: true);
         }
+        return KeyEventResult.handled;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+        setState(() {
+          _isOnBackButton = true;
+        });
         return KeyEventResult.handled;
       }
       if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
@@ -429,6 +465,10 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
             setState(() {
               _isOnChips = true;
             });
+          } else {
+            setState(() {
+              _isOnBackButton = true;
+            });
           }
           return KeyEventResult.handled;
         }
@@ -452,6 +492,10 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
           if (_hasChips) {
             setState(() {
               _isOnChips = true;
+            });
+          } else {
+            setState(() {
+              _isOnBackButton = true;
             });
           }
         }
@@ -558,40 +602,6 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
 
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black.withOpacity(0.8),
-        elevation: 4,
-        title: Text(
-          titleText,
-          style: const TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        leading: FocusScope(
-          child: Builder(
-            builder:
-                (context) => IconButton(
-                  icon: const Icon(
-                    Icons.arrow_back,
-                    color: Colors.white,
-                    size: 32,
-                  ),
-                  onPressed: () => Navigator.pop(context),
-                  tooltip: 'Orqaga',
-                  style: ButtonStyle(
-                    backgroundColor: MaterialStateProperty.resolveWith(
-                      (states) =>
-                          FocusScope.of(context).hasFocus
-                              ? Colors.blue[500]
-                              : Colors.blue[700],
-                    ),
-                  ),
-                ),
-          ),
-        ),
-      ),
       body: Focus(
         autofocus: true,
         focusNode: _pageFocusNode,
@@ -605,6 +615,50 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
               physics: const AlwaysScrollableScrollPhysics(),
               cacheExtent: 500,
               slivers: [
+                // Custom back button header
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
+                    child: Row(
+                      children: [
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          decoration: BoxDecoration(
+                            border: _isOnBackButton
+                                ? Border.all(color: Colors.yellow, width: 2)
+                                : null,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.arrow_back,
+                                  color: Colors.white,
+                                  size: 28,
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  titleText,
+                                  style: const TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
                 if (_hasChips)
                   SliverPadding(
                     padding: const EdgeInsets.all(16),
@@ -773,7 +827,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                     delegate: SliverChildBuilderDelegate((context, index) {
                       final film = _films[index];
                       final isSelected =
-                          !_isOnChips && index == _selectedFilmIndex;
+                          !_isOnChips && !_isOnBackButton && index == _selectedFilmIndex;
                       return FilmCard(
                         film: film,
                         isSelected: isSelected,
@@ -791,9 +845,16 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                 ),
 
                 if (_isLoading && _films.isNotEmpty)
-                  SliverPadding(
-                    padding: const EdgeInsets.all(24),
-                    sliver: SliverToBoxAdapter(child: _buildSkeletonLoader()),
+                  const SliverToBoxAdapter(
+                    child: Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24.0),
+                        child: CircularProgressIndicator(
+                          color: Color(0xFFFF3B6C),
+                          strokeWidth: 3,
+                        ),
+                      ),
+                    ),
                   ),
                 if (!_hasMore && _films.isNotEmpty)
                   SliverToBoxAdapter(
