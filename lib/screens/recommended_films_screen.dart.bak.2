@@ -295,7 +295,7 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
     );
   }
 
-  // -------- Fokus va navigatsiya --------
+  // -------- Fokus va navigatsiya (CategoriesScreen'dan) --------
 
   KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
@@ -330,15 +330,19 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
 
     if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
       if (_selectedFilmIndex < lastIndex) {
+        final prevRow = _selectedFilmIndex ~/ rowSize;
         setState(() => _selectedFilmIndex++);
-        _scrollToFilmIndex();
+        final newRow = _selectedFilmIndex ~/ rowSize;
+        if (newRow != prevRow) _scrollToFilmIndex();
       }
       return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
       if (_selectedFilmIndex > 0) {
+        final prevRow = _selectedFilmIndex ~/ rowSize;
         setState(() => _selectedFilmIndex--);
-        _scrollToFilmIndex();
+        final newRow = _selectedFilmIndex ~/ rowSize;
+        if (newRow != prevRow) _scrollToFilmIndex();
       }
       return KeyEventResult.handled;
     }
@@ -347,15 +351,7 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
       if (nextRowIdx <= lastIndex) {
         setState(() => _selectedFilmIndex = nextRowIdx);
         _scrollToFilmIndex(force: true);
-
-        // Agar oxirgi 2 qatorga yaqinlashsak, oldindan yuklash
-        final totalRows = (totalFilms / rowSize).ceil();
-        final currentRow = (_selectedFilmIndex / rowSize).ceil();
-        if (currentRow >= totalRows - 2 && _hasMore && !_isLoading) {
-          _fetchFilms();
-        }
       } else if (_hasMore && !_isLoading) {
-        // Oxirgi element, keyingi sahifani yuklash
         _fetchFilms();
       }
       return KeyEventResult.handled;
@@ -390,29 +386,24 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
     if (!_scrollController.hasClients || _films.isEmpty) return;
 
     final metrics = _gridMetrics(context);
-    final targetRow = (_selectedFilmIndex ~/ metrics.rowSize);
+    final rowSize = metrics.rowSize;
+    final targetRow = (_selectedFilmIndex ~/ rowSize);
     final targetOffset = metrics.topPadding + targetRow * metrics.rowHeight;
 
-    final viewportHeight = _scrollController.position.viewportDimension;
-    final currentOffset = _scrollController.offset;
+    final currentRow = ((_scrollController.offset - metrics.topPadding) /
+            metrics.rowHeight)
+        .round()
+        .clamp(0, targetRow);
 
-    // Elementning ekran ichida ko'rinishini tekshirish
-    final isVisible =
-        targetOffset >= currentOffset &&
-        (targetOffset + metrics.rowHeight) <= (currentOffset + viewportHeight);
-
-    // Agar 'force' bo'lmasa va element allaqachon ekranda ko'rinib turgan bo'lsa, scroll shart emas
-    if (!force && isVisible) {
-      return;
-    }
+    if (!force && currentRow == targetRow) return;
 
     final maxOffset = _scrollController.position.maxScrollExtent;
-    final clampedOffset = targetOffset.clamp(0.0, maxOffset);
+    final clamped = targetOffset.clamp(0.0, maxOffset);
 
     _scrollController.animateTo(
-      clampedOffset,
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeOutCubic,
+      clamped,
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
     );
   }
 

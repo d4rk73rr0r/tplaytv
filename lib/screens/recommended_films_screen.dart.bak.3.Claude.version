@@ -88,14 +88,17 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
     _scrollController.addListener(_onScroll);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _pageFocusNode.requestFocus();
+      if (mounted) {
+        _pageFocusNode.requestFocus();
+      }
     });
   }
 
   @override
   void dispose() {
-    _scrollController.dispose();
     _debounce?.cancel();
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     _pageFocusNode.dispose();
     _backButtonFocusNode.dispose();
     SystemChrome.setPreferredOrientations([
@@ -133,15 +136,21 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
 
   int _rowSizeForWidth() => _gridMetrics(context).rowSize;
 
-  // -------- Fetching --------
+  // -------- Fetching (OPTIMIZATSIYA QILINGAN) --------
 
   void _onScroll() {
+    if (!mounted) return;
+
     if (_scrollController.position.pixels >=
             _scrollController.position.maxScrollExtent - 200 &&
         !_isLoading &&
         _hasMore) {
       _debounce?.cancel();
-      _debounce = Timer(const Duration(milliseconds: 300), _fetchFilms);
+      _debounce = Timer(const Duration(milliseconds: 500), () {
+        if (mounted && !_isLoading && _hasMore) {
+          _fetchFilms();
+        }
+      });
     }
   }
 
@@ -188,35 +197,50 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
           if (_hasMore) _currentPage++;
         }
       });
-      _precacheImages(newFilms);
+
+      // Async ravishda precache qilish
+      _precacheImagesAsync(newFilms);
     } catch (e) {
       if (mounted) {
         setState(() {
           _isLoading = false;
           _errorMessage = "Kontent yuklashda xatolik: $e";
-          _showErrorDialog(_errorMessage!);
         });
+        _showErrorDialog(_errorMessage!);
       }
     }
   }
 
-  void _precacheImages(List<dynamic> films) {
-    for (var film in films.take(10)) {
-      String coverUrl = 'https://placehold.co/320x180';
-      if (film['files'] != null && film['files'].isNotEmpty) {
-        final file = film['files'][0];
-        if (file['thumbnails'] != null &&
-            file['thumbnails']['small'] != null &&
-            file['thumbnails']['small']['src'] != null) {
-          coverUrl = file['thumbnails']['small']['src'];
-        } else if (file['link'] != null) {
-          coverUrl = file['link'];
+  // OPTIMIZATSIYA: Async va limited precaching
+  Future<void> _precacheImagesAsync(List<dynamic> films) async {
+    if (!mounted) return;
+
+    for (var film in films.take(5)) {
+      if (!mounted) break;
+
+      try {
+        String coverUrl = 'https://placehold.co/320x180';
+        if (film['files'] != null && film['files'].isNotEmpty) {
+          final file = film['files'][0];
+          if (file['thumbnails'] != null &&
+              file['thumbnails']['small'] != null &&
+              file['thumbnails']['small']['src'] != null) {
+            coverUrl = file['thumbnails']['small']['src'];
+          } else if (file['link'] != null) {
+            coverUrl = file['link'];
+          }
         }
+
+        await precacheImage(
+          CachedNetworkImageProvider(
+            coverUrl,
+            cacheManager: customCacheManager,
+          ),
+          context,
+        ).timeout(const Duration(seconds: 2), onTimeout: () {});
+      } catch (e) {
+        // Ignore errors silently
       }
-      precacheImage(
-        CachedNetworkImageProvider(coverUrl, cacheManager: customCacheManager),
-        context,
-      );
     }
   }
 
@@ -243,51 +267,35 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
             ),
             backgroundColor: Colors.black.withOpacity(0.8),
             actions: [
-              FocusScope(
-                child: Builder(
-                  builder:
-                      (context) => TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        style: TextButton.styleFrom(
-                          backgroundColor:
-                              FocusScope.of(context).hasFocus
-                                  ? Colors.blue[500]
-                                  : Colors.blue[700],
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 32,
-                            vertical: 16,
-                          ),
-                        ),
-                        child: const Text(
-                          "OK",
-                          style: TextStyle(fontSize: 20, color: Colors.white),
-                        ),
-                      ),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                style: TextButton.styleFrom(
+                  backgroundColor: Colors.blue[700],
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32,
+                    vertical: 16,
+                  ),
+                ),
+                child: const Text(
+                  "OK",
+                  style: TextStyle(fontSize: 20, color: Colors.white),
                 ),
               ),
-              FocusScope(
-                child: Builder(
-                  builder:
-                      (context) => TextButton(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          _fetchFilms(isRefresh: true);
-                        },
-                        style: TextButton.styleFrom(
-                          backgroundColor:
-                              FocusScope.of(context).hasFocus
-                                  ? Colors.blue[500]
-                                  : Colors.blue[700],
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 32,
-                            vertical: 16,
-                          ),
-                        ),
-                        child: const Text(
-                          "Qayta urinish",
-                          style: TextStyle(fontSize: 20, color: Colors.white),
-                        ),
-                      ),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _fetchFilms(isRefresh: true);
+                },
+                style: TextButton.styleFrom(
+                  backgroundColor: Colors.blue[700],
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32,
+                    vertical: 16,
+                  ),
+                ),
+                child: const Text(
+                  "Qayta urinish",
+                  style: TextStyle(fontSize: 20, color: Colors.white),
                 ),
               ),
             ],
@@ -295,7 +303,7 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
     );
   }
 
-  // -------- Fokus va navigatsiya --------
+  // -------- Fokus va navigatsiya (OPTIMIZATSIYA QILINGAN) --------
 
   KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
@@ -309,7 +317,9 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
             _isOnBackButton = false;
             _selectedFilmIndex = 0;
           });
-          _pageFocusNode.requestFocus();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _pageFocusNode.requestFocus();
+          });
           return KeyEventResult.handled;
         }
       }
@@ -330,36 +340,45 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
 
     if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
       if (_selectedFilmIndex < lastIndex) {
-        setState(() => _selectedFilmIndex++);
-        _scrollToFilmIndex();
+        final prevRow = _selectedFilmIndex ~/ rowSize;
+        final newIndex = _selectedFilmIndex + 1;
+        final newRow = newIndex ~/ rowSize;
+
+        setState(() => _selectedFilmIndex = newIndex);
+
+        if (newRow != prevRow) {
+          _scrollToFilmIndex();
+        }
       }
       return KeyEventResult.handled;
     }
+
     if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
       if (_selectedFilmIndex > 0) {
-        setState(() => _selectedFilmIndex--);
-        _scrollToFilmIndex();
+        final prevRow = _selectedFilmIndex ~/ rowSize;
+        final newIndex = _selectedFilmIndex - 1;
+        final newRow = newIndex ~/ rowSize;
+
+        setState(() => _selectedFilmIndex = newIndex);
+
+        if (newRow != prevRow) {
+          _scrollToFilmIndex();
+        }
       }
       return KeyEventResult.handled;
     }
+
     if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
       final nextRowIdx = _selectedFilmIndex + rowSize;
       if (nextRowIdx <= lastIndex) {
         setState(() => _selectedFilmIndex = nextRowIdx);
         _scrollToFilmIndex(force: true);
-
-        // Agar oxirgi 2 qatorga yaqinlashsak, oldindan yuklash
-        final totalRows = (totalFilms / rowSize).ceil();
-        final currentRow = (_selectedFilmIndex / rowSize).ceil();
-        if (currentRow >= totalRows - 2 && _hasMore && !_isLoading) {
-          _fetchFilms();
-        }
       } else if (_hasMore && !_isLoading) {
-        // Oxirgi element, keyingi sahifani yuklash
         _fetchFilms();
       }
       return KeyEventResult.handled;
     }
+
     if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
       final prevRowIdx = _selectedFilmIndex - rowSize;
       if (prevRowIdx >= 0) {
@@ -367,10 +386,13 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
         _scrollToFilmIndex(force: true);
       } else {
         setState(() => _isOnBackButton = true);
-        _backButtonFocusNode.requestFocus();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _backButtonFocusNode.requestFocus();
+        });
       }
       return KeyEventResult.handled;
     }
+
     if (event.logicalKey == LogicalKeyboardKey.enter ||
         event.logicalKey == LogicalKeyboardKey.select) {
       if (_selectedFilmIndex >= 0 && _selectedFilmIndex < _films.length) {
@@ -379,40 +401,38 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
         Navigator.push(
           context,
           createSlideRoute(FilmScreen(filmId: filmId)),
-        ).then((_) => _pageFocusNode.requestFocus());
+        ).then((_) {
+          if (mounted) _pageFocusNode.requestFocus();
+        });
       }
       return KeyEventResult.handled;
     }
+
     return KeyEventResult.ignored;
   }
 
   void _scrollToFilmIndex({bool force = false}) {
-    if (!_scrollController.hasClients || _films.isEmpty) return;
+    if (!mounted || !_scrollController.hasClients || _films.isEmpty) return;
 
     final metrics = _gridMetrics(context);
-    final targetRow = (_selectedFilmIndex ~/ metrics.rowSize);
+    final rowSize = metrics.rowSize;
+    final targetRow = (_selectedFilmIndex ~/ rowSize);
     final targetOffset = metrics.topPadding + targetRow * metrics.rowHeight;
 
-    final viewportHeight = _scrollController.position.viewportDimension;
-    final currentOffset = _scrollController.offset;
+    final currentRow = ((_scrollController.offset - metrics.topPadding) /
+            metrics.rowHeight)
+        .round()
+        .clamp(0, targetRow);
 
-    // Elementning ekran ichida ko'rinishini tekshirish
-    final isVisible =
-        targetOffset >= currentOffset &&
-        (targetOffset + metrics.rowHeight) <= (currentOffset + viewportHeight);
-
-    // Agar 'force' bo'lmasa va element allaqachon ekranda ko'rinib turgan bo'lsa, scroll shart emas
-    if (!force && isVisible) {
-      return;
-    }
+    if (!force && currentRow == targetRow) return;
 
     final maxOffset = _scrollController.position.maxScrollExtent;
-    final clampedOffset = targetOffset.clamp(0.0, maxOffset);
+    final clamped = targetOffset.clamp(0.0, maxOffset);
 
     _scrollController.animateTo(
-      clampedOffset,
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeOutCubic,
+      clamped,
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
     );
   }
 
@@ -456,7 +476,7 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
       highlightColor: Colors.transparent,
       splashColor: Colors.transparent,
       onFocusChange: (hasFocus) {
-        if (hasFocus != _isOnBackButton) {
+        if (mounted && hasFocus != _isOnBackButton) {
           setState(() => _isOnBackButton = hasFocus);
         }
       },
@@ -510,7 +530,7 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
                   child: CustomScrollView(
                     controller: _scrollController,
                     physics: const AlwaysScrollableScrollPhysics(),
-                    cacheExtent: 500,
+                    cacheExtent: 200, // OPTIMIZATSIYA: 500'dan 200'ga
                     slivers: [
                       if (_isLoading && _films.isEmpty)
                         SliverPadding(
@@ -580,7 +600,9 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
                                   createSlideRoute(
                                     FilmScreen(filmId: film['id']),
                                   ),
-                                ).then((_) => _pageFocusNode.requestFocus());
+                                ).then((_) {
+                                  if (mounted) _pageFocusNode.requestFocus();
+                                });
                               },
                               itemWidth: itemWidth,
                               itemHeight: itemHeight,
@@ -619,7 +641,7 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
                                   ),
                                 ),
                                 child: const Text(
-                                  "Barcha tavsiyalar ko‘rsatildi",
+                                  "Barcha tavsiyalar ko'rsatildi",
                                   style: TextStyle(
                                     fontSize: 20,
                                     fontWeight: FontWeight.w500,
@@ -642,7 +664,7 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
   }
 }
 
-// -------- Cards (CategoriesScreen dizayniga mos) --------
+// -------- Cards (Kattarish animatsiyasi olib tashlandi) --------
 
 class FilmCard extends StatelessWidget {
   final dynamic film;
@@ -671,7 +693,7 @@ class FilmCard extends StatelessWidget {
                 ? files[0]['thumbnails']['small']['src']
                 : files[0]['link'] ?? 'https://placehold.co/320x180')
             : 'https://placehold.co/320x180';
-    final title = film['name_uz'] ?? 'Noma’lum';
+    final title = film['name_uz'] ?? 'Noma\'lum';
     final year = film['year']?.toString() ?? '';
     final genres = film['genres'] ?? [];
     final genreName = genres.isNotEmpty ? genres[0]['name_uz'] ?? '' : '';
@@ -689,10 +711,7 @@ class FilmCard extends StatelessWidget {
               SizedBox(
                 width: itemWidth,
                 height: itemHeight,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  transform: Matrix4.identity()..scale(isSelected ? 1.05 : 1.0),
-                  transformAlignment: Alignment.center,
+                child: Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [

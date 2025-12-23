@@ -10,17 +10,17 @@ import 'package:shimmer/shimmer.dart';
 
 final customCacheManager = CacheManager(
   Config(
-    'recommendedFilmsCache',
+    'filmImagesCache',
     stalePeriod: const Duration(days: 7),
     maxNrOfCacheObjects: 100,
   ),
 );
 
-// CategoriesScreen'dan olingan konstantalar
+// Matn blokining balandligi (global, FilmCard ham foydalanadi)
 const double kTextBlockHeight = 60.0;
 const Color kPinkColor = Color(0xFFFF3B6C);
 
-// CategoriesScreen'dan olingan grid metrikasi
+// Grid metrikasi (SliverGrid hisoblari bilan mos)
 class _GridMetrics {
   final double itemWidth;
   final double itemHeight;
@@ -37,16 +37,21 @@ class _GridMetrics {
   });
 }
 
-class RecommendedFilmsScreen extends StatefulWidget {
-  const RecommendedFilmsScreen({super.key});
+class CategoriesScreen extends StatefulWidget {
+  final Map<String, dynamic>? initialCategory;
+
+  const CategoriesScreen({super.key, this.initialCategory});
 
   @override
-  State<RecommendedFilmsScreen> createState() => _RecommendedFilmsScreenState();
+  State<CategoriesScreen> createState() => _CategoriesScreenState();
 }
 
-class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
+class _CategoriesScreenState extends State<CategoriesScreen> {
   // Data
+  List<dynamic> _categories = [];
   List<dynamic> _films = [];
+  dynamic _selectedCategory;
+  int _selectedCategoryIndex = 0;
   int _selectedFilmIndex = 0;
 
   // Paging
@@ -63,17 +68,19 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
   // Focus
   final FocusNode _pageFocusNode = FocusNode();
   final FocusNode _backButtonFocusNode = FocusNode();
+  bool _isOnChips = true;
   bool _isOnBackButton = false;
+  bool get _hasChips => widget.initialCategory == null;
 
-  // Layout (CategoriesScreen bilan mos)
+  // Layout (IndexScreen Categories bilan mos)
   static const double _gridLeftPad = 24.0;
   static const double _gridRightPad = 16.0;
   static const double _horizontalPadding = _gridLeftPad + _gridRightPad; // 40
   static const double _itemMargin = 8.0;
   static const double _gridSpacing = 8.0;
-  static const double _targetCards = 5.5;
-  static const double _cardRatio = 1.5;
-  static const double _rowSpacing = 24.0;
+  static const double _targetCards = 5.5; // ~5.5 kartani ko‘rsatish
+  static const double _cardRatio = 1.5; // height = width * 1.5
+  static const double _rowSpacing = 24.0; // qatordan qatorga masofa
 
   @override
   void initState() {
@@ -84,7 +91,16 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
-    _fetchFilms(isRefresh: true);
+    if (widget.initialCategory != null) {
+      _categories = [widget.initialCategory];
+      _selectedCategory = widget.initialCategory;
+      _selectedCategoryIndex = 0;
+      _isOnChips = false; // darhol gridga
+      _fetchFilms(isRefresh: true);
+    } else {
+      _fetchCategories();
+    }
+
     _scrollController.addListener(_onScroll);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -106,12 +122,13 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
     super.dispose();
   }
 
-  // -------- Grid metrics (CategoriesScreen'dan) --------
+  // -------- Grid metrics --------
 
   _GridMetrics _gridMetrics(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final availableWidth = screenWidth - _gridLeftPad - _gridRightPad;
 
+    // SliverGridDelegateWithMaxCrossAxisExtent’da ishlatiladigan extents bilan mos
     final maxCrossAxisExtent =
         ((screenWidth - _horizontalPadding - _itemMargin * _targetCards) /
             _targetCards) +
@@ -120,6 +137,7 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
     final rowSize = (availableWidth / maxCrossAxisExtent).floor().clamp(1, 10);
     final itemWidth = (availableWidth - _itemMargin * rowSize) / rowSize;
     final itemHeight = itemWidth * _cardRatio;
+    // Row balandligi: karta + matn + rowSpacing (griddagi real vertikal ajratma)
     final rowHeight = itemHeight + kTextBlockHeight + _rowSpacing;
 
     return _GridMetrics(
@@ -127,7 +145,7 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
       itemHeight: itemHeight,
       rowHeight: rowHeight,
       rowSize: rowSize,
-      topPadding: 24,
+      topPadding: 24, // SliverPadding(top: 24) bilan mos
     );
   }
 
@@ -145,8 +163,49 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
     }
   }
 
+  Future<void> _fetchCategories() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final response = await ApiService.getCategories();
+      if (!mounted) return;
+
+      final list = response['data'] ?? [];
+      _categories = list;
+      _isLoading = false;
+
+      if (_categories.isNotEmpty) {
+        if (widget.initialCategory != null) {
+          _selectedCategoryIndex = _categories.indexWhere(
+            (c) => c['id'] == widget.initialCategory!['id'],
+          );
+          if (_selectedCategoryIndex < 0) _selectedCategoryIndex = 0;
+        } else {
+          _selectedCategoryIndex = 0;
+        }
+        _selectedCategory = _categories[_selectedCategoryIndex];
+        _fetchFilms(isRefresh: true);
+      } else {
+        _errorMessage = "Kategoriyalar mavjud emas";
+        _showErrorDialog(_errorMessage!);
+      }
+      setState(() {});
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = "Kategoriyalarni yuklashda xato: $e";
+        _showErrorDialog(_errorMessage!);
+      });
+    }
+  }
+
   Future<void> _fetchFilms({bool isRefresh = false}) async {
-    if (_isLoading || !mounted) return;
+    if (_isLoading || _selectedCategory == null || !mounted) return;
 
     setState(() {
       _isLoading = true;
@@ -160,13 +219,14 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
     });
 
     try {
-      final response = await ApiService.getRecommendedFilms(
+      final response = await ApiService.getFilmsByCategory(
+        categoryId: _selectedCategory['id'],
         page: _currentPage,
         perPage: _perPage,
       );
 
-      final newFilms = (response['data'] as List<dynamic>?) ?? [];
-      final meta = response['meta'] as Map<String, dynamic>?;
+      final newFilms = response['data'] as List<dynamic>? ?? [];
+      final meta = response['meta'] is Map ? response['meta'] : {};
 
       if (!mounted) return;
 
@@ -174,29 +234,30 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
         _films.addAll(newFilms);
         _isLoading = false;
 
-        if (meta != null &&
-            meta['currentPage'] is int &&
-            meta['pageCount'] is int) {
-          if (meta['currentPage'] < meta['pageCount']) {
+        if (meta['currentPage'] != null && meta['pageCount'] != null) {
+          final current = int.tryParse(meta['currentPage'].toString()) ?? 1;
+          final total = int.tryParse(meta['pageCount'].toString()) ?? 1;
+          if (current < total) {
             _hasMore = true;
             _currentPage++;
           } else {
             _hasMore = false;
+            HapticFeedback.mediumImpact();
           }
         } else {
           _hasMore = newFilms.length == _perPage;
           if (_hasMore) _currentPage++;
         }
       });
+
       _precacheImages(newFilms);
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _errorMessage = "Kontent yuklashda xatolik: $e";
-          _showErrorDialog(_errorMessage!);
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = "Filmlarni yuklashda xato: $e";
+        _showErrorDialog(_errorMessage!);
+      });
     }
   }
 
@@ -221,6 +282,10 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
   }
 
   Future<void> _onRefresh() async {
+    if (!mounted) return;
+    setState(() {
+      _errorMessage = null;
+    });
     await _fetchFilms(isRefresh: true);
   }
 
@@ -271,7 +336,11 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
                       (context) => TextButton(
                         onPressed: () {
                           Navigator.pop(context);
-                          _fetchFilms(isRefresh: true);
+                          if (message.contains("Kategoriyalar")) {
+                            _fetchCategories();
+                          } else {
+                            _fetchFilms(isRefresh: true);
+                          }
                         },
                         style: TextButton.styleFrom(
                           backgroundColor:
@@ -304,14 +373,13 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
 
     if (_isOnBackButton) {
       if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-        if (_films.isNotEmpty) {
-          setState(() {
-            _isOnBackButton = false;
-            _selectedFilmIndex = 0;
-          });
-          _pageFocusNode.requestFocus();
-          return KeyEventResult.handled;
-        }
+        setState(() {
+          _isOnBackButton = false;
+          _isOnChips = _hasChips;
+          if (!_hasChips && _films.isNotEmpty) _selectedFilmIndex = 0;
+        });
+        _pageFocusNode.requestFocus();
+        return KeyEventResult.handled;
       }
       if (event.logicalKey == LogicalKeyboardKey.enter ||
           event.logicalKey == LogicalKeyboardKey.select) {
@@ -321,68 +389,119 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
       return KeyEventResult.ignored;
     }
 
-    // Grid (film) fokusida
+    if (_categories.isEmpty) return KeyEventResult.ignored;
     final totalFilms = _films.length;
-    if (totalFilms == 0) return KeyEventResult.ignored;
 
-    final lastIndex = totalFilms - 1;
-    final rowSize = _rowSizeForWidth();
-
-    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
-      if (_selectedFilmIndex < lastIndex) {
-        setState(() => _selectedFilmIndex++);
-        _scrollToFilmIndex();
-      }
-      return KeyEventResult.handled;
-    }
-    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-      if (_selectedFilmIndex > 0) {
-        setState(() => _selectedFilmIndex--);
-        _scrollToFilmIndex();
-      }
-      return KeyEventResult.handled;
-    }
-    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-      final nextRowIdx = _selectedFilmIndex + rowSize;
-      if (nextRowIdx <= lastIndex) {
-        setState(() => _selectedFilmIndex = nextRowIdx);
-        _scrollToFilmIndex(force: true);
-
-        // Agar oxirgi 2 qatorga yaqinlashsak, oldindan yuklash
-        final totalRows = (totalFilms / rowSize).ceil();
-        final currentRow = (_selectedFilmIndex / rowSize).ceil();
-        if (currentRow >= totalRows - 2 && _hasMore && !_isLoading) {
-          _fetchFilms();
-        }
-      } else if (_hasMore && !_isLoading) {
-        // Oxirgi element, keyingi sahifani yuklash
-        _fetchFilms();
-      }
-      return KeyEventResult.handled;
-    }
-    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-      final prevRowIdx = _selectedFilmIndex - rowSize;
-      if (prevRowIdx >= 0) {
-        setState(() => _selectedFilmIndex = prevRowIdx);
-        _scrollToFilmIndex(force: true);
-      } else {
+    if (_isOnChips && _hasChips) {
+      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
         setState(() => _isOnBackButton = true);
         _backButtonFocusNode.requestFocus();
+        return KeyEventResult.handled;
       }
-      return KeyEventResult.handled;
-    }
-    if (event.logicalKey == LogicalKeyboardKey.enter ||
-        event.logicalKey == LogicalKeyboardKey.select) {
-      if (_selectedFilmIndex >= 0 && _selectedFilmIndex < _films.length) {
-        final film = _films[_selectedFilmIndex];
-        final filmId = film['id'];
-        Navigator.push(
-          context,
-          createSlideRoute(FilmScreen(filmId: filmId)),
-        ).then((_) => _pageFocusNode.requestFocus());
+      if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+        if (_selectedCategoryIndex < _categories.length - 1) {
+          setState(() {
+            _selectedCategoryIndex++;
+            _selectedCategory = _categories[_selectedCategoryIndex];
+          });
+          _fetchFilms(isRefresh: true);
+        }
+        return KeyEventResult.handled;
       }
-      return KeyEventResult.handled;
+      if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+        if (_selectedCategoryIndex > 0) {
+          setState(() {
+            _selectedCategoryIndex--;
+            _selectedCategory = _categories[_selectedCategoryIndex];
+          });
+          _fetchFilms(isRefresh: true);
+        }
+        return KeyEventResult.handled;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+        if (totalFilms > 0) {
+          setState(() {
+            _isOnChips = false;
+            _selectedFilmIndex = 0;
+          });
+          _scrollToFilmIndex(force: true);
+        }
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    } else {
+      final lastIndex = totalFilms == 0 ? 0 : totalFilms - 1;
+      final rowSize = _rowSizeForWidth();
+
+      if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+        if (_selectedFilmIndex < lastIndex) {
+          final prevRow = _selectedFilmIndex ~/ rowSize;
+          setState(() => _selectedFilmIndex++);
+          final newRow = _selectedFilmIndex ~/ rowSize;
+          if (newRow != prevRow) _scrollToFilmIndex();
+        }
+        return KeyEventResult.handled;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+        if (_selectedFilmIndex > 0) {
+          final prevRow = _selectedFilmIndex ~/ rowSize;
+          setState(() => _selectedFilmIndex--);
+          final newRow = _selectedFilmIndex ~/ rowSize;
+          if (newRow != prevRow) {
+            _scrollToFilmIndex();
+          }
+          return KeyEventResult.handled;
+        }
+      }
+      if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+        final nextRowIdx = _selectedFilmIndex + rowSize;
+        if (nextRowIdx <= lastIndex) {
+          setState(() => _selectedFilmIndex = nextRowIdx);
+          _scrollToFilmIndex(force: true);
+
+          // Agar oxirgi 2 qatorga yaqinlashsak, oldindan yuklash
+          final totalRows = (totalFilms / rowSize).ceil();
+          final currentRow = (_selectedFilmIndex / rowSize).ceil();
+          if (currentRow >= totalRows - 2 && _hasMore && !_isLoading) {
+            _fetchFilms();
+          }
+        } else if (_hasMore && !_isLoading) {
+          // Oxirgi element, keyingi sahifani yuklash
+          _fetchFilms();
+        }
+        return KeyEventResult.handled;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+        final prevRowIdx = _selectedFilmIndex - rowSize;
+        if (prevRowIdx >= 0) {
+          setState(() => _selectedFilmIndex = prevRowIdx);
+          _scrollToFilmIndex(force: true);
+        } else {
+          if (_hasChips) {
+            setState(() {
+              _isOnChips = true;
+            });
+          } else {
+            setState(() => _isOnBackButton = true);
+            _backButtonFocusNode.requestFocus();
+          }
+        }
+        return KeyEventResult.handled;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.enter ||
+          event.logicalKey == LogicalKeyboardKey.select) {
+        if (_selectedFilmIndex >= 0 && _selectedFilmIndex < _films.length) {
+          final film = _films[_selectedFilmIndex];
+          final filmId = film['id'];
+          Navigator.push(
+            context,
+            createSlideRoute(FilmScreen(filmId: filmId)),
+          ).then((_) => _pageFocusNode.requestFocus());
+        }
+        return KeyEventResult.handled;
+      }
     }
+
     return KeyEventResult.ignored;
   }
 
@@ -390,30 +509,30 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
     if (!_scrollController.hasClients || _films.isEmpty) return;
 
     final metrics = _gridMetrics(context);
-    final targetRow = (_selectedFilmIndex ~/ metrics.rowSize);
+    final rowSize = metrics.rowSize;
+    final targetRow = (_selectedFilmIndex ~/ rowSize);
     final targetOffset = metrics.topPadding + targetRow * metrics.rowHeight;
 
-    final viewportHeight = _scrollController.position.viewportDimension;
-    final currentOffset = _scrollController.offset;
+    final currentRow = ((_scrollController.offset - metrics.topPadding) /
+            metrics.rowHeight)
+        .round()
+        .clamp(0, targetRow);
 
-    // Elementning ekran ichida ko'rinishini tekshirish
-    final isVisible =
-        targetOffset >= currentOffset &&
-        (targetOffset + metrics.rowHeight) <= (currentOffset + viewportHeight);
-
-    // Agar 'force' bo'lmasa va element allaqachon ekranda ko'rinib turgan bo'lsa, scroll shart emas
-    if (!force && isVisible) {
-      return;
-    }
+    if (!force && currentRow == targetRow) return;
 
     final maxOffset = _scrollController.position.maxScrollExtent;
-    final clampedOffset = targetOffset.clamp(0.0, maxOffset);
+    final clamped = targetOffset.clamp(0.0, maxOffset);
+    final distance = (clamped - _scrollController.offset).abs();
 
-    _scrollController.animateTo(
-      clampedOffset,
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeOutCubic,
-    );
+    if (distance > 800) {
+      _scrollController.jumpTo(clamped);
+    } else {
+      _scrollController.animateTo(
+        clamped,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+    }
   }
 
   // -------- UI --------
@@ -437,10 +556,19 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
         return Shimmer.fromColors(
           baseColor: Colors.grey[800]!,
           highlightColor: Colors.grey[600]!,
+          period: const Duration(milliseconds: 1000),
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              color: Colors.black,
+              color: Colors.black.withOpacity(0.8),
+              border: Border.all(color: Colors.white.withOpacity(0.2)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
           ),
         );
@@ -449,6 +577,11 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
   }
 
   Widget _buildHeader() {
+    final titleText =
+        _selectedCategory != null
+            ? (_selectedCategory['title_uz'] ?? "Kategoriyalar")
+            : (widget.initialCategory?['title_uz'] ?? "Kategoriyalar");
+
     return InkWell(
       onTap: () => Navigator.pop(context),
       focusNode: _backButtonFocusNode,
@@ -473,7 +606,7 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
             ),
             const SizedBox(width: 8),
             Text(
-              'Tavsiya etilganlar',
+              titleText,
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
@@ -512,6 +645,113 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
                     physics: const AlwaysScrollableScrollPhysics(),
                     cacheExtent: 500,
                     slivers: [
+                      if (_hasChips)
+                        SliverPadding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 0,
+                          ),
+                          sliver: SliverToBoxAdapter(
+                            child:
+                                _categories.isNotEmpty
+                                    ? SizedBox(
+                                      height: 60,
+                                      child: ListView.builder(
+                                        scrollDirection: Axis.horizontal,
+                                        physics: const BouncingScrollPhysics(),
+                                        itemCount: _categories.length,
+                                        itemBuilder: (context, index) {
+                                          final category = _categories[index];
+                                          final isSelected =
+                                              index == _selectedCategoryIndex;
+                                          final hasFocus =
+                                              _isOnChips && isSelected;
+                                          return GestureDetector(
+                                            onTap: () {
+                                              setState(() {
+                                                _selectedCategoryIndex = index;
+                                                _selectedCategory = category;
+                                              });
+                                              _fetchFilms(isRefresh: true);
+                                            },
+                                            child: AnimatedContainer(
+                                              duration: const Duration(
+                                                milliseconds: 150,
+                                              ),
+                                              margin: const EdgeInsets.only(
+                                                right: 16,
+                                              ),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 16,
+                                                    vertical: 12,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color:
+                                                    isSelected
+                                                        ? Colors.blue[500]
+                                                        : Colors.blue[700],
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                                border:
+                                                    hasFocus
+                                                        ? Border.all(
+                                                          color: Colors.yellow,
+                                                          width: 2,
+                                                        )
+                                                        : Border.all(
+                                                          color: Colors.white
+                                                              .withOpacity(0.2),
+                                                        ),
+                                                boxShadow:
+                                                    hasFocus
+                                                        ? [
+                                                          BoxShadow(
+                                                            color: Colors.yellow
+                                                                .withOpacity(
+                                                                  0.3,
+                                                                ),
+                                                            blurRadius: 8,
+                                                          ),
+                                                        ]
+                                                        : [
+                                                          BoxShadow(
+                                                            color: Colors.black
+                                                                .withOpacity(
+                                                                  0.2,
+                                                                ),
+                                                            blurRadius: 4,
+                                                            offset:
+                                                                const Offset(
+                                                                  0,
+                                                                  2,
+                                                                ),
+                                                          ),
+                                                        ],
+                                              ),
+                                              child: Center(
+                                                child: Text(
+                                                  category['title_uz'] ??
+                                                      'Noma’lum',
+                                                  style: TextStyle(
+                                                    fontSize: 22,
+                                                    fontWeight:
+                                                        isSelected
+                                                            ? FontWeight.bold
+                                                            : FontWeight.w600,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    )
+                                    : const SizedBox.shrink(),
+                          ),
+                        ),
+
                       if (_isLoading && _films.isEmpty)
                         SliverPadding(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -522,25 +762,49 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
                       if (!_isLoading &&
                           _films.isEmpty &&
                           _errorMessage != null)
-                        SliverFillRemaining(
+                        SliverToBoxAdapter(
                           child: Center(
-                            child: Text(
-                              _errorMessage!,
-                              style: const TextStyle(
-                                fontSize: 24,
-                                color: Colors.white,
-                              ),
-                              textAlign: TextAlign.center,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  _errorMessage!,
+                                  style: const TextStyle(
+                                    fontSize: 24,
+                                    color: Colors.white,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 16),
+                                ElevatedButton(
+                                  onPressed: _fetchCategories,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.blue[700],
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 32,
+                                      vertical: 16,
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    "Qayta urinish",
+                                    style: TextStyle(fontSize: 20),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
                       if (!_isLoading &&
                           _films.isEmpty &&
                           _errorMessage == null)
-                        const SliverFillRemaining(
+                        const SliverToBoxAdapter(
                           child: Center(
                             child: Text(
-                              "Tavsiyalar mavjud emas",
+                              "Filmlar mavjud emas",
                               style: TextStyle(
                                 fontSize: 24,
                                 color: Colors.white,
@@ -548,6 +812,8 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
                             ),
                           ),
                         ),
+
+                      // Grid (5.5 karta ko‘rinishi, aniq balandlik)
                       SliverPadding(
                         padding: const EdgeInsets.fromLTRB(
                           _gridLeftPad,
@@ -570,7 +836,7 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
                           ) {
                             final film = _films[index];
                             final isSelected =
-                                !_isOnBackButton && index == _selectedFilmIndex;
+                                !_isOnChips && index == _selectedFilmIndex;
                             return FilmCard(
                               film: film,
                               isSelected: isSelected,
@@ -588,6 +854,7 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
                           }, childCount: _films.length),
                         ),
                       ),
+
                       if (_isLoading && _films.isNotEmpty)
                         const SliverToBoxAdapter(
                           child: Padding(
@@ -617,9 +884,16 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
                                   border: Border.all(
                                     color: Colors.white.withOpacity(0.2),
                                   ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.2),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
                                 ),
                                 child: const Text(
-                                  "Barcha tavsiyalar ko‘rsatildi",
+                                  "Barcha filmlar ko‘rsatildi",
                                   style: TextStyle(
                                     fontSize: 20,
                                     fontWeight: FontWeight.w500,
@@ -642,7 +916,7 @@ class _RecommendedFilmsScreenState extends State<RecommendedFilmsScreen> {
   }
 }
 
-// -------- Cards (CategoriesScreen dizayniga mos) --------
+// -------- Cards (IndexScreen Categories dizayniga mos) --------
 
 class FilmCard extends StatelessWidget {
   final dynamic film;
@@ -682,10 +956,11 @@ class FilmCard extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
         child: SizedBox(
           width: itemWidth,
-          height: itemHeight + kTextBlockHeight,
+          height: itemHeight + kTextBlockHeight, // butun hujayra balandligi
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Muqova + border
               SizedBox(
                 width: itemWidth,
                 height: itemHeight,
@@ -710,45 +985,51 @@ class FilmCard extends StatelessWidget {
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(20),
-                    child: CachedNetworkImage(
-                      imageUrl: imageUrl,
-                      cacheManager: customCacheManager,
-                      fit: BoxFit.cover,
-                      width: itemWidth,
-                      height: itemHeight,
-                      placeholder:
-                          (context, url) =>
-                              Container(color: Colors.black.withOpacity(0.8)),
-                      errorWidget:
-                          (context, url, error) => Container(
-                            color: Colors.black.withOpacity(0.8),
-                            child: const Icon(
-                              Icons.error,
-                              color: Colors.white,
-                              size: 48,
-                            ),
+                    child: Stack(
+                      children: [
+                        CachedNetworkImage(
+                          imageUrl: imageUrl,
+                          cacheManager: customCacheManager,
+                          fit: BoxFit.cover,
+                          width: itemWidth,
+                          height: itemHeight,
+                          placeholder:
+                              (context, url) => Container(
+                                color: Colors.black.withOpacity(0.8),
+                              ),
+                          errorWidget:
+                              (context, url, error) => Container(
+                                color: Colors.black.withOpacity(0.8),
+                              ),
+                        ),
+                        if (isSelected)
+                          Container(
+                            width: itemWidth,
+                            height: itemHeight,
+                            color: Colors.white.withOpacity(0.12),
                           ),
+                      ],
                     ),
                   ),
                 ),
               ),
               const SizedBox(height: 12),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
+              SizedBox(
+                width: itemWidth,
                 child: Text(
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 18,
+                    fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
                 ),
               ),
               const SizedBox(height: 4),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
+              SizedBox(
+                width: itemWidth,
                 child: Text(
                   year.isNotEmpty && genreName.isNotEmpty
                       ? "$year · $genreName"
@@ -757,7 +1038,7 @@ class FilmCard extends StatelessWidget {
                       : genreName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 16, color: Colors.white70),
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
               ),
             ],
