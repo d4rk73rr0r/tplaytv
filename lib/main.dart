@@ -220,6 +220,25 @@ class _MainScreenState extends State<MainScreen>
         Future.microtask(() {
           _sidebarFocusNode.unfocus();
           _restoreLastContentFocus();
+          // Explicitly request focus on the content area after closing sidebar
+          _requestContentFocus();
+        });
+      }
+    });
+  }
+
+  void _requestContentFocus() {
+    // Request focus on the content area
+    // This ensures the currently visible screen gets focus
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        // First unfocus everything to reset focus state
+        FocusScope.of(context).unfocus();
+        // Then request focus on content
+        Future.delayed(const Duration(milliseconds: 50), () {
+          if (mounted) {
+            _contentFocusNode.requestFocus();
+          }
         });
       }
     });
