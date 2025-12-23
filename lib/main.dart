@@ -219,8 +219,7 @@ class _MainScreenState extends State<MainScreen>
         // Delay unfocus to allow KeyUp event to be processed first
         Future.microtask(() {
           _sidebarFocusNode.unfocus();
-          _restoreLastContentFocus();
-          // Explicitly request focus on the content area after closing sidebar
+          // Request focus on content area after sidebar closes
           _requestContentFocus();
         });
       }
@@ -230,16 +229,9 @@ class _MainScreenState extends State<MainScreen>
   void _requestContentFocus() {
     // Request focus on the content area
     // This ensures the currently visible screen gets focus
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    Future.delayed(const Duration(milliseconds: 100), () {
       if (mounted) {
-        // First unfocus everything to reset focus state
-        FocusScope.of(context).unfocus();
-        // Then request focus on content
-        Future.delayed(const Duration(milliseconds: 50), () {
-          if (mounted) {
-            _contentFocusNode.requestFocus();
-          }
-        });
+        _contentFocusNode.requestFocus();
       }
     });
   }
