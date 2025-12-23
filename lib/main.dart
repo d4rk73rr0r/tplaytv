@@ -215,8 +215,11 @@ class _MainScreenState extends State<MainScreen>
         _sidebarFocusNode.requestFocus();
       } else {
         _expandController.reverse();
-        _sidebarFocusNode.unfocus();
-        _restoreLastContentFocus();
+        // Delay unfocus to allow KeyUp event to be processed first
+        Future.microtask(() {
+          _sidebarFocusNode.unfocus();
+          _restoreLastContentFocus();
+        });
       }
     });
   }
