@@ -18,7 +18,6 @@ final customCacheManager = CacheManager(
 
 // Matn blokining balandligi (global, FilmCard ham foydalanadi)
 const double kTextBlockHeight = 60.0;
-const Color kPinkColor = Color(0xFFFF3B6C);
 
 // Grid metrikasi (SliverGrid hisoblari bilan mos)
 class _GridMetrics {
@@ -67,9 +66,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
 
   // Focus
   final FocusNode _pageFocusNode = FocusNode();
-  final FocusNode _backButtonFocusNode = FocusNode();
   bool _isOnChips = true;
-  bool _isOnBackButton = false;
   bool get _hasChips => widget.initialCategory == null;
 
   // Layout (IndexScreen Categories bilan mos)
@@ -113,7 +110,6 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     _scrollController.dispose();
     _debounce?.cancel();
     _pageFocusNode.dispose();
-    _backButtonFocusNode.dispose();
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
@@ -371,33 +367,10 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
       return KeyEventResult.ignored;
     }
 
-    if (_isOnBackButton) {
-      if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-        setState(() {
-          _isOnBackButton = false;
-          _isOnChips = _hasChips;
-          if (!_hasChips && _films.isNotEmpty) _selectedFilmIndex = 0;
-        });
-        _pageFocusNode.requestFocus();
-        return KeyEventResult.handled;
-      }
-      if (event.logicalKey == LogicalKeyboardKey.enter ||
-          event.logicalKey == LogicalKeyboardKey.select) {
-        Navigator.pop(context);
-        return KeyEventResult.handled;
-      }
-      return KeyEventResult.ignored;
-    }
-
     if (_categories.isEmpty) return KeyEventResult.ignored;
     final totalFilms = _films.length;
 
     if (_isOnChips && _hasChips) {
-      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-        setState(() => _isOnBackButton = true);
-        _backButtonFocusNode.requestFocus();
-        return KeyEventResult.handled;
-      }
       if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
         if (_selectedCategoryIndex < _categories.length - 1) {
           setState(() {
@@ -451,6 +424,13 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
             _scrollToFilmIndex();
           }
           return KeyEventResult.handled;
+        } else {
+          if (_hasChips) {
+            setState(() {
+              _isOnChips = true;
+            });
+          }
+          return KeyEventResult.handled;
         }
       }
       if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
@@ -473,9 +453,6 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
             setState(() {
               _isOnChips = true;
             });
-          } else {
-            setState(() => _isOnBackButton = true);
-            _backButtonFocusNode.requestFocus();
           }
         }
         return KeyEventResult.handled;
@@ -568,339 +545,291 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
     );
   }
 
-  Widget _buildHeader() {
+  @override
+  Widget build(BuildContext context) {
     final titleText =
         _selectedCategory != null
             ? (_selectedCategory['title_uz'] ?? "Kategoriyalar")
             : (widget.initialCategory?['title_uz'] ?? "Kategoriyalar");
 
-    return InkWell(
-      onTap: () => Navigator.pop(context),
-      focusNode: _backButtonFocusNode,
-      focusColor: Colors.transparent,
-      highlightColor: Colors.transparent,
-      splashColor: Colors.transparent,
-      onFocusChange: (hasFocus) {
-        if (hasFocus != _isOnBackButton) {
-          setState(() => _isOnBackButton = hasFocus);
-        }
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-        color: Colors.transparent,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.arrow_back,
-              color: _isOnBackButton ? kPinkColor : Colors.white,
-              size: 32,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              titleText,
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: _isOnBackButton ? kPinkColor : Colors.white,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
     final metrics = _gridMetrics(context);
     final itemWidth = metrics.itemWidth;
     final itemHeight = metrics.itemHeight;
 
     return Scaffold(
       backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black.withOpacity(0.8),
+        elevation: 4,
+        title: Text(
+          titleText,
+          style: const TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        leading: FocusScope(
+          child: Builder(
+            builder:
+                (context) => IconButton(
+                  icon: const Icon(
+                    Icons.arrow_back,
+                    color: Colors.white,
+                    size: 32,
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                  tooltip: 'Orqaga',
+                  style: ButtonStyle(
+                    backgroundColor: MaterialStateProperty.resolveWith(
+                      (states) =>
+                          FocusScope.of(context).hasFocus
+                              ? Colors.blue[500]
+                              : Colors.blue[700],
+                    ),
+                  ),
+                ),
+          ),
+        ),
+      ),
       body: Focus(
         autofocus: true,
         focusNode: _pageFocusNode,
         onKeyEvent: _onKeyEvent,
         child: SafeArea(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeader(),
-              Expanded(
-                child: RefreshIndicator(
-                  onRefresh: _onRefresh,
-                  color: Colors.white,
-                  child: CustomScrollView(
-                    controller: _scrollController,
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    cacheExtent: 500,
-                    slivers: [
-                      if (_hasChips)
-                        SliverPadding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 0,
-                          ),
-                          sliver: SliverToBoxAdapter(
-                            child:
-                                _categories.isNotEmpty
-                                    ? SizedBox(
-                                      height: 60,
-                                      child: ListView.builder(
-                                        scrollDirection: Axis.horizontal,
-                                        physics: const BouncingScrollPhysics(),
-                                        itemCount: _categories.length,
-                                        itemBuilder: (context, index) {
-                                          final category = _categories[index];
-                                          final isSelected =
-                                              index == _selectedCategoryIndex;
-                                          final hasFocus =
-                                              _isOnChips && isSelected;
-                                          return GestureDetector(
-                                            onTap: () {
-                                              setState(() {
-                                                _selectedCategoryIndex = index;
-                                                _selectedCategory = category;
-                                              });
-                                              _fetchFilms(isRefresh: true);
-                                            },
-                                            child: AnimatedContainer(
-                                              duration: const Duration(
-                                                milliseconds: 150,
-                                              ),
-                                              margin: const EdgeInsets.only(
-                                                right: 16,
-                                              ),
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 16,
-                                                    vertical: 12,
+          child: RefreshIndicator(
+            onRefresh: _onRefresh,
+            color: Colors.white,
+            child: CustomScrollView(
+              controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(),
+              cacheExtent: 500,
+              slivers: [
+                if (_hasChips)
+                  SliverPadding(
+                    padding: const EdgeInsets.all(16),
+                    sliver: SliverToBoxAdapter(
+                      child:
+                          _categories.isNotEmpty
+                              ? SizedBox(
+                                height: 60,
+                                child: ListView.builder(
+                                  scrollDirection: Axis.horizontal,
+                                  physics: const BouncingScrollPhysics(),
+                                  itemCount: _categories.length,
+                                  itemBuilder: (context, index) {
+                                    final category = _categories[index];
+                                    final isSelected =
+                                        index == _selectedCategoryIndex;
+                                    final hasFocus = _isOnChips && isSelected;
+                                    return GestureDetector(
+                                      onTap: () {
+                                        setState(() {
+                                          _selectedCategoryIndex = index;
+                                          _selectedCategory = category;
+                                        });
+                                        _fetchFilms(isRefresh: true);
+                                      },
+                                      child: AnimatedContainer(
+                                        duration: const Duration(
+                                          milliseconds: 150,
+                                        ),
+                                        margin: const EdgeInsets.only(
+                                          right: 16,
+                                        ),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                          vertical: 12,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color:
+                                              isSelected
+                                                  ? Colors.blue[500]
+                                                  : Colors.blue[700],
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          border:
+                                              hasFocus
+                                                  ? Border.all(
+                                                    color: Colors.yellow,
+                                                    width: 2,
+                                                  )
+                                                  : Border.all(
+                                                    color: Colors.white
+                                                        .withOpacity(0.2),
                                                   ),
-                                              decoration: BoxDecoration(
-                                                color:
-                                                    isSelected
-                                                        ? Colors.blue[500]
-                                                        : Colors.blue[700],
-                                                borderRadius:
-                                                    BorderRadius.circular(12),
-                                                border:
-                                                    hasFocus
-                                                        ? Border.all(
-                                                          color: Colors.yellow,
-                                                          width: 2,
-                                                        )
-                                                        : Border.all(
-                                                          color: Colors.white
-                                                              .withOpacity(0.2),
-                                                        ),
-                                                boxShadow:
-                                                    hasFocus
-                                                        ? [
-                                                          BoxShadow(
-                                                            color: Colors.yellow
-                                                                .withOpacity(
-                                                                  0.3,
-                                                                ),
-                                                            blurRadius: 8,
-                                                          ),
-                                                        ]
-                                                        : [
-                                                          BoxShadow(
-                                                            color: Colors.black
-                                                                .withOpacity(
-                                                                  0.2,
-                                                                ),
-                                                            blurRadius: 4,
-                                                            offset:
-                                                                const Offset(
-                                                                  0,
-                                                                  2,
-                                                                ),
-                                                          ),
-                                                        ],
-                                              ),
-                                              child: Center(
-                                                child: Text(
-                                                  category['title_uz'] ??
-                                                      'Noma’lum',
-                                                  style: TextStyle(
-                                                    fontSize: 22,
-                                                    fontWeight:
-                                                        isSelected
-                                                            ? FontWeight.bold
-                                                            : FontWeight.w600,
-                                                    color: Colors.white,
-                                                  ),
-                                                ),
-                                              ),
+                                          boxShadow:
+                                              hasFocus
+                                                  ? [
+                                                    BoxShadow(
+                                                      color: Colors.yellow
+                                                          .withOpacity(0.3),
+                                                      blurRadius: 8,
+                                                    ),
+                                                  ]
+                                                  : [
+                                                    BoxShadow(
+                                                      color: Colors.black
+                                                          .withOpacity(0.2),
+                                                      blurRadius: 4,
+                                                      offset: const Offset(
+                                                        0,
+                                                        2,
+                                                      ),
+                                                    ),
+                                                  ],
+                                        ),
+                                        child: Center(
+                                          child: Text(
+                                            category['title_uz'] ?? 'Noma’lum',
+                                            style: TextStyle(
+                                              fontSize: 22,
+                                              fontWeight:
+                                                  isSelected
+                                                      ? FontWeight.bold
+                                                      : FontWeight.w600,
+                                              color: Colors.white,
                                             ),
-                                          );
-                                        },
+                                          ),
+                                        ),
                                       ),
-                                    )
-                                    : const SizedBox.shrink(),
-                          ),
-                        ),
+                                    );
+                                  },
+                                ),
+                              )
+                              : const SizedBox.shrink(),
+                    ),
+                  ),
 
-                      if (_isLoading && _films.isEmpty)
-                        SliverPadding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          sliver: SliverToBoxAdapter(
-                            child: _buildSkeletonLoader(),
-                          ),
-                        ),
-                      if (!_isLoading &&
-                          _films.isEmpty &&
-                          _errorMessage != null)
-                        SliverToBoxAdapter(
-                          child: Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  _errorMessage!,
-                                  style: const TextStyle(
-                                    fontSize: 24,
-                                    color: Colors.white,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                                const SizedBox(height: 16),
-                                ElevatedButton(
-                                  onPressed: _fetchCategories,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.blue[700],
-                                    foregroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 32,
-                                      vertical: 16,
-                                    ),
-                                  ),
-                                  child: const Text(
-                                    "Qayta urinish",
-                                    style: TextStyle(fontSize: 20),
-                                  ),
-                                ),
-                              ],
+                if (_isLoading && _films.isEmpty)
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    sliver: SliverToBoxAdapter(child: _buildSkeletonLoader()),
+                  ),
+                if (!_isLoading && _films.isEmpty && _errorMessage != null)
+                  SliverToBoxAdapter(
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            _errorMessage!,
+                            style: const TextStyle(
+                              fontSize: 24,
+                              color: Colors.white,
                             ),
+                            textAlign: TextAlign.center,
                           ),
-                        ),
-                      if (!_isLoading &&
-                          _films.isEmpty &&
-                          _errorMessage == null)
-                        const SliverToBoxAdapter(
-                          child: Center(
-                            child: Text(
-                              "Filmlar mavjud emas",
-                              style: TextStyle(
-                                fontSize: 24,
-                                color: Colors.white,
+                          const SizedBox(height: 16),
+                          ElevatedButton(
+                            onPressed: _fetchCategories,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue[700],
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 32,
+                                vertical: 16,
                               ),
                             ),
+                            child: const Text(
+                              "Qayta urinish",
+                              style: TextStyle(fontSize: 20),
+                            ),
                           ),
-                        ),
-
-                      // Grid (5.5 karta ko‘rinishi, aniq balandlik)
-                      SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(
-                          _gridLeftPad,
-                          24,
-                          _gridRightPad,
-                          0,
-                        ),
-                        sliver: SliverGrid(
-                          gridDelegate:
-                              SliverGridDelegateWithMaxCrossAxisExtent(
-                                maxCrossAxisExtent: itemWidth + _itemMargin,
-                                mainAxisSpacing: _rowSpacing,
-                                crossAxisSpacing: _itemMargin,
-                                childAspectRatio:
-                                    itemWidth / (itemHeight + kTextBlockHeight),
-                              ),
-                          delegate: SliverChildBuilderDelegate((
-                            context,
-                            index,
-                          ) {
-                            final film = _films[index];
-                            final isSelected =
-                                !_isOnChips && index == _selectedFilmIndex;
-                            return FilmCard(
-                              film: film,
-                              isSelected: isSelected,
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  createSlideRoute(
-                                    FilmScreen(filmId: film['id']),
-                                  ),
-                                ).then((_) => _pageFocusNode.requestFocus());
-                              },
-                              itemWidth: itemWidth,
-                              itemHeight: itemHeight,
-                            );
-                          }, childCount: _films.length),
-                        ),
+                        ],
                       ),
+                    ),
+                  ),
+                if (!_isLoading && _films.isEmpty && _errorMessage == null)
+                  const SliverToBoxAdapter(
+                    child: Center(
+                      child: Text(
+                        "Filmlar mavjud emas",
+                        style: TextStyle(fontSize: 24, color: Colors.white),
+                      ),
+                    ),
+                  ),
 
-                      if (_isLoading && _films.isNotEmpty)
-                        const SliverToBoxAdapter(
-                          child: Padding(
-                            padding: EdgeInsets.symmetric(vertical: 24.0),
-                            child: Center(
-                              child: SizedBox(
-                                width: 40,
-                                height: 40,
-                                child: CircularProgressIndicator(
-                                  color: kPinkColor,
-                                  strokeWidth: 3.0,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      if (!_hasMore && _films.isNotEmpty)
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Center(
-                              child: Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.8),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: Colors.white.withOpacity(0.2),
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.2),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                child: const Text(
-                                  "Barcha filmlar ko‘rsatildi",
-                                  style: TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
+                // Grid (5.5 karta ko‘rinishi, aniq balandlik)
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(
+                    _gridLeftPad,
+                    24,
+                    _gridRightPad,
+                    0,
+                  ),
+                  sliver: SliverGrid(
+                    gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                      maxCrossAxisExtent: itemWidth + _itemMargin,
+                      mainAxisSpacing: _rowSpacing,
+                      crossAxisSpacing: _itemMargin,
+                      childAspectRatio:
+                          itemWidth / (itemHeight + kTextBlockHeight),
+                    ),
+                    delegate: SliverChildBuilderDelegate((context, index) {
+                      final film = _films[index];
+                      final isSelected =
+                          !_isOnChips && index == _selectedFilmIndex;
+                      return FilmCard(
+                        film: film,
+                        isSelected: isSelected,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            createSlideRoute(FilmScreen(filmId: film['id'])),
+                          ).then((_) => _pageFocusNode.requestFocus());
+                        },
+                        itemWidth: itemWidth,
+                        itemHeight: itemHeight,
+                      );
+                    }, childCount: _films.length),
                   ),
                 ),
-              ),
-            ],
+
+                if (_isLoading && _films.isNotEmpty)
+                  SliverPadding(
+                    padding: const EdgeInsets.all(24),
+                    sliver: SliverToBoxAdapter(child: _buildSkeletonLoader()),
+                  ),
+                if (!_hasMore && _films.isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.8),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.2),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.2),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: const Text(
+                            "Barcha filmlar ko‘rsatildi",
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -928,6 +857,7 @@ class FilmCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const pink = Color(0xFFFF3B6C);
     final files = film['files'] ?? [];
     final imageUrl =
         files.isNotEmpty
@@ -971,9 +901,7 @@ class FilmCard extends StatelessWidget {
                       ),
                     ],
                     border:
-                        isSelected
-                            ? Border.all(color: kPinkColor, width: 2)
-                            : null,
+                        isSelected ? Border.all(color: pink, width: 2) : null,
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(20),
