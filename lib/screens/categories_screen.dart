@@ -458,7 +458,15 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
         if (nextRowIdx <= lastIndex) {
           setState(() => _selectedFilmIndex = nextRowIdx);
           _scrollToFilmIndex(force: true);
+
+          // Agar oxirgi 2 qatorga yaqinlashsak, oldindan yuklash
+          final totalRows = (totalFilms / rowSize).ceil();
+          final currentRow = (_selectedFilmIndex / rowSize).ceil();
+          if (currentRow >= totalRows - 2 && _hasMore && !_isLoading) {
+            _fetchFilms();
+          }
         } else if (_hasMore && !_isLoading) {
+          // Oxirgi element, keyingi sahifani yuklash
           _fetchFilms();
         }
         return KeyEventResult.handled;
