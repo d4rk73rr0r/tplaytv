@@ -242,15 +242,27 @@ class _MainScreenState extends State<MainScreen>
   }
 
   KeyEventResult _handleSidebarKeyEvent(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+    // Accept all event types including KeyUpEvent
+    if (event is! KeyDownEvent &&
+        event is! KeyRepeatEvent &&
+        event is! KeyUpEvent) {
       return KeyEventResult.ignored;
     }
 
     final key = event.logicalKey;
 
+    // Back buttons work in any event type
     if (_isBackKey(key)) {
-      _toggleSidebar();
+      // Only toggle on KeyDown to avoid double-toggle
+      if (event is KeyDownEvent || event is KeyRepeatEvent) {
+        _toggleSidebar();
+      }
       return KeyEventResult.handled;
+    }
+
+    // Other keys only work on KeyDown and KeyRepeat
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
     }
 
     if (key == LogicalKeyboardKey.arrowDown) {
