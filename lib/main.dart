@@ -251,10 +251,10 @@ class _MainScreenState extends State<MainScreen>
 
     final key = event.logicalKey;
 
-    // Back buttons work in any event type
+    // Back buttons work in any event type to block system handler
     if (_isBackKey(key)) {
-      // Only toggle on KeyDown to avoid double-toggle
-      if (event is KeyDownEvent || event is KeyRepeatEvent) {
+      // Only close on KeyDown/KeyRepeat, but handle all types to prevent propagation
+      if ((event is KeyDownEvent || event is KeyRepeatEvent) && _isSidebarExpanded) {
         _toggleSidebar();
       }
       return KeyEventResult.handled;
