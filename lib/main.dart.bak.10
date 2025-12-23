@@ -103,6 +103,7 @@ class _MainScreenState extends State<MainScreen>
     FavoritesScreen(),
   ];
 
+  // Profil elementi olib tashlandi, _screens bilan soni teng bo‘lishi uchun.
   final List<Map<String, dynamic>> _menuItems = [
     {
       'icon': Icons.home_outlined,
@@ -127,11 +128,12 @@ class _MainScreenState extends State<MainScreen>
   late FocusNode _contentFocusNode;
   late FocusNode _sidebarFocusNode;
 
+  // Sidebar ochilganda kontentdagi oxirgi fokusni saqlab qo‘yish
   FocusNode? _lastFocusedContentNode;
 
   // Exit menu (right-side)
   bool _isExitMenuOpen = false;
-  int _exitSelectedIndex = 0;
+  int _exitSelectedIndex = 0; // 0 => Ha, chiqaman ; 1 => Yo'q
   late AnimationController _exitMenuController;
   late Animation<Offset> _exitMenuSlide;
   late FocusNode _exitMenuFocusNode;
@@ -188,6 +190,7 @@ class _MainScreenState extends State<MainScreen>
     super.dispose();
   }
 
+  // RouteAware: returning from pushed routes
   @override
   void didPopNext() {
     _restoreLastContentFocus();
@@ -210,6 +213,7 @@ class _MainScreenState extends State<MainScreen>
     setState(() {
       _isSidebarExpanded = !_isSidebarExpanded;
       if (_isSidebarExpanded) {
+        // Sidebar ochilganda joriy fokusni saqlab qo‘yamiz
         _lastFocusedContentNode = FocusManager.instance.primaryFocus;
         _expandController.forward();
         _sidebarFocusNode.requestFocus();
@@ -233,12 +237,14 @@ class _MainScreenState extends State<MainScreen>
   }
 
   KeyEventResult _handleSidebarKeyEvent(FocusNode node, KeyEvent event) {
+    // KeyDown + KeyRepeat ni qo'llab-quvvatlash
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
 
     final key = event.logicalKey;
 
+    // Back closes sidebar
     if (key == LogicalKeyboardKey.goBack) {
       _toggleSidebar();
       return KeyEventResult.handled;
@@ -259,6 +265,7 @@ class _MainScreenState extends State<MainScreen>
       return KeyEventResult.handled;
     }
 
+    // Close with Right arrow; Left arrow does nothing now
     if (key == LogicalKeyboardKey.arrowRight) {
       _toggleSidebar();
       return KeyEventResult.handled;
@@ -285,7 +292,7 @@ class _MainScreenState extends State<MainScreen>
       return false;
     }
     _openExitMenu();
-    return false;
+    return false; // Do not pop by default
   }
 
   void _openExitMenu() {
@@ -296,11 +303,7 @@ class _MainScreenState extends State<MainScreen>
       _lastFocusBeforeExitMenu = FocusManager.instance.primaryFocus;
     });
     _exitMenuController.forward();
-    Future.microtask(() {
-      if (mounted && _isExitMenuOpen) {
-        _exitMenuFocusNode.requestFocus();
-      }
-    });
+    Future.microtask(() => _exitMenuFocusNode.requestFocus());
   }
 
   void _closeExitMenu() {
@@ -328,41 +331,28 @@ class _MainScreenState extends State<MainScreen>
     }
   }
 
-  bool _isBackKey(LogicalKeyboardKey key) {
-    return key == LogicalKeyboardKey.goBack ||
-        key == LogicalKeyboardKey.escape ||
-        key == LogicalKeyboardKey.backspace ||
-        key == LogicalKeyboardKey.browserBack ||
-        key == LogicalKeyboardKey.gameButtonB ||
-        key == LogicalKeyboardKey.navigatePrevious;
-  }
-
   KeyEventResult _handleExitMenuKeyEvent(FocusNode node, KeyEvent event) {
-    // Barcha event turlarini qabul qilamiz
-    if (event is! KeyDownEvent &&
-        event is! KeyRepeatEvent &&
-        event is! KeyUpEvent) {
+    // Allow Back/Left even on KeyUp to ensure closure on all devices
+    if (event is KeyUpEvent) {
+      final key = event.logicalKey;
+      if (key == LogicalKeyboardKey.goBack ||
+          key == LogicalKeyboardKey.escape ||
+          key == LogicalKeyboardKey.arrowLeft ||
+          key == LogicalKeyboardKey.backspace ||
+          key == LogicalKeyboardKey.browserBack ||
+          key == LogicalKeyboardKey.gameButtonB ||
+          key == LogicalKeyboardKey.navigatePrevious) {
+        _closeExitMenu();
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
+
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
 
     final key = event.logicalKey;
-
-    // Back tugmalari uchun - har qanday event turida ishlaydi
-    if (_isBackKey(key)) {
-      _closeExitMenu();
-      return KeyEventResult.handled;
-    }
-
-    // Left arrow ham exit menuni yopadi
-    if (key == LogicalKeyboardKey.arrowLeft) {
-      _closeExitMenu();
-      return KeyEventResult.handled;
-    }
-
-    // Qolgan tugmalar faqat KeyDown va KeyRepeat da ishlaydi
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
-      return KeyEventResult.ignored;
-    }
 
     if (key == LogicalKeyboardKey.arrowDown ||
         key == LogicalKeyboardKey.arrowUp) {
@@ -374,6 +364,18 @@ class _MainScreenState extends State<MainScreen>
 
     if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.select) {
       _activateExitSelection();
+      return KeyEventResult.handled;
+    }
+
+    // Back variants and Left close the exit menu
+    if (key == LogicalKeyboardKey.goBack ||
+        key == LogicalKeyboardKey.escape ||
+        key == LogicalKeyboardKey.arrowLeft ||
+        key == LogicalKeyboardKey.backspace ||
+        key == LogicalKeyboardKey.browserBack ||
+        key == LogicalKeyboardKey.gameButtonB ||
+        key == LogicalKeyboardKey.navigatePrevious) {
+      _closeExitMenu();
       return KeyEventResult.handled;
     }
 
@@ -442,7 +444,7 @@ class _MainScreenState extends State<MainScreen>
         final visible = _exitMenuController.value > 0.0 || _isExitMenuOpen;
         if (!visible) return const SizedBox.shrink();
         return IgnorePointer(
-          ignoring: !_isExitMenuOpen,
+          ignoring: _exitMenuController.value == 0.0,
           child: Stack(
             children: [
               Opacity(
@@ -476,7 +478,6 @@ class _MainScreenState extends State<MainScreen>
                     child: Focus(
                       focusNode: _exitMenuFocusNode,
                       onKeyEvent: _handleExitMenuKeyEvent,
-                      canRequestFocus: true,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -553,7 +554,7 @@ class _MainScreenState extends State<MainScreen>
             AnimatedBuilder(
               animation: _expandAnimation,
               builder: (context, child) {
-                final width = 72 + (_expandAnimation.value * 168);
+                final width = 72 + (_expandAnimation.value * 168); // 72 to 240
                 return Container(
                   width: width,
                   decoration: const BoxDecoration(color: Color(0xFF212121)),
