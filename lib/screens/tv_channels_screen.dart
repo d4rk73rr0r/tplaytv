@@ -84,6 +84,35 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
         .indexOf(selectedSource)
         .clamp(0, _sources.length - 1);
     _loadTVData();
+
+    // Request focus when the screen is built
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _mainFocusNode.requestFocus();
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(TVChannelsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Request focus when widget updates (e.g., when navigating back to this screen)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_mainFocusNode.hasFocus) {
+        _mainFocusNode.requestFocus();
+      }
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Request focus when the screen becomes visible in the IndexedStack
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_mainFocusNode.hasFocus) {
+        _mainFocusNode.requestFocus();
+      }
+    });
   }
 
   @override
@@ -938,7 +967,7 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
   Widget build(BuildContext context) {
     return RawKeyboardListener(
       focusNode: _mainFocusNode,
-      autofocus: false,
+      autofocus: true,
       onKey: _handleKeyEvent,
       child: Scaffold(
         backgroundColor: Colors.black,
