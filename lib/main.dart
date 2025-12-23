@@ -215,8 +215,11 @@ class _MainScreenState extends State<MainScreen>
         _sidebarFocusNode.requestFocus();
       } else {
         _expandController.reverse();
-        _sidebarFocusNode.unfocus();
-        _restoreLastContentFocus();
+        // Delay unfocus to allow KeyUp event to be processed first
+        Future.microtask(() {
+          _sidebarFocusNode.unfocus();
+          _restoreLastContentFocus();
+        });
       }
     });
   }
@@ -232,16 +235,37 @@ class _MainScreenState extends State<MainScreen>
     return KeyEventResult.ignored;
   }
 
+  bool _isBackKey(LogicalKeyboardKey key) {
+    return key == LogicalKeyboardKey.goBack ||
+        key == LogicalKeyboardKey.escape ||
+        key == LogicalKeyboardKey.backspace ||
+        key == LogicalKeyboardKey.browserBack ||
+        key == LogicalKeyboardKey.gameButtonB ||
+        key == LogicalKeyboardKey.navigatePrevious;
+  }
+
   KeyEventResult _handleSidebarKeyEvent(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+    // Accept all event types including KeyUpEvent
+    if (event is! KeyDownEvent &&
+        event is! KeyRepeatEvent &&
+        event is! KeyUpEvent) {
       return KeyEventResult.ignored;
     }
 
     final key = event.logicalKey;
 
-    if (key == LogicalKeyboardKey.goBack) {
-      _toggleSidebar();
+    // Back buttons work in any event type to block system handler
+    if (_isBackKey(key)) {
+      // Only close on KeyDown/KeyRepeat, but handle all types to prevent propagation
+      if ((event is KeyDownEvent || event is KeyRepeatEvent) && _isSidebarExpanded) {
+        _toggleSidebar();
+      }
       return KeyEventResult.handled;
+    }
+
+    // Other keys only work on KeyDown and KeyRepeat
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
     }
 
     if (key == LogicalKeyboardKey.arrowDown) {
@@ -326,15 +350,6 @@ class _MainScreenState extends State<MainScreen>
     } else {
       _closeExitMenu();
     }
-  }
-
-  bool _isBackKey(LogicalKeyboardKey key) {
-    return key == LogicalKeyboardKey.goBack ||
-        key == LogicalKeyboardKey.escape ||
-        key == LogicalKeyboardKey.backspace ||
-        key == LogicalKeyboardKey.browserBack ||
-        key == LogicalKeyboardKey.gameButtonB ||
-        key == LogicalKeyboardKey.navigatePrevious;
   }
 
   KeyEventResult _handleExitMenuKeyEvent(FocusNode node, KeyEvent event) {
