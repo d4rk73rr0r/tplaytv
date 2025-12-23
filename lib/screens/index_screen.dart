@@ -714,7 +714,7 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
 
     if (provider.genresPreview.isNotEmpty) {
       if (currentSection == sectionIndex) {
-        return provider.genresPreview.length + 1;
+        return provider.genresPreview.length;
       }
       currentSection++;
     }
@@ -786,10 +786,6 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
 
     if (provider.genresPreview.isNotEmpty) {
       if (currentSection == _selectedSectionIndex) {
-        if (_selectedItemIndex == provider.genresPreview.length) {
-          _pushAndRefocus(const GenresScreen());
-          return;
-        }
         if (_selectedItemIndex < provider.genresPreview.length) {
           final genre = provider.genresPreview[_selectedItemIndex];
           _pushAndRefocus(GenresFilmsScreen(genre: genre));
@@ -1718,7 +1714,7 @@ class _GenresSectionState extends State<GenresSection> {
     final itemWidth = (availableWidth - itemMargin * 2) / 3;
     final itemHeight = itemWidth * (9 / 16);
 
-    final totalItems = genres.length + 1;
+    final totalItems = genres.length;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 24.0),
@@ -1746,20 +1742,6 @@ class _GenresSectionState extends State<GenresSection> {
               itemBuilder: (context, index) {
                 final bool itemSelected =
                     widget.isSelected && widget.selectedIndex == index;
-
-                if (index == genres.length) {
-                  return ViewAllCard(
-                    width: itemWidth,
-                    height: itemHeight,
-                    isSelected: itemSelected,
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        createSlideRoute(const GenresScreen()),
-                      ).then((_) => _requestIndexFocus(context));
-                    },
-                  );
-                }
 
                 final genre = genres[index];
                 return GenreFilmStyleCard(
