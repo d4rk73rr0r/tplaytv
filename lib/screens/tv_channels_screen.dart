@@ -9,6 +9,10 @@ import 'package:tplaytv/screens/video_player_screen.dart';
 import 'package:tplaytv/services/tv_api_service.dart';
 import 'package:tplaytv/utils/navigation.dart';
 
+const Color kPinkColor = Color(0xFFFF3B6C);
+
+enum _FocusArea { sources, categories, grid }
+
 // Kesh sozlamalari
 final customCacheManager = CacheManager(
   Config(
@@ -27,20 +31,45 @@ final dataCacheManager = CacheManager(
 );
 
 class TVChannelsScreen extends StatefulWidget {
-  const TVChannelsScreen({super.key});
+  const TVChannelsScreen({super.key, this.focusNode});
+
+  /// Agar parent fokusni nazorat qilmoqchi bo‘lsa, shu yerga uzatadi.
+  final FocusNode? focusNode;
 
   @override
   State<TVChannelsScreen> createState() => _TVChannelsScreenState();
 }
 
-class _TVChannelsScreenState extends State<TVChannelsScreen>
-    with TickerProviderStateMixin {
-  TabController? _tabController;
+class _TVChannelsScreenState extends State<TVChannelsScreen> {
+  // Data
   List<dynamic> categories = [];
   Map<String, List<dynamic>> channelsByCategory = {};
   String selectedSource = "SalomTV";
-  bool _isLoading = true;
+  late final List<String> _sources = TVApiService.baseUrls.keys.toList();
   int totalChannels = 0;
+
+  // Focus & selection
+  _FocusArea _focusArea = _FocusArea.grid;
+  int _selectedSourceIndex = 0;
+  int _selectedCategoryIndex = 0;
+  int _selectedChannelIndex = 0;
+
+  // Loading
+  bool _isLoading = true;
+
+  // Scroll
+  final ScrollController _gridScrollController = ScrollController();
+  final ScrollController _categoriesScrollController = ScrollController();
+
+  // Focus nodes
+  late final FocusNode _internalFocusNode = FocusNode(debugLabel: 'TVMain');
+  FocusNode get _mainFocusNode => widget.focusNode ?? _internalFocusNode;
+  bool get _ownsFocusNode => widget.focusNode == null;
+
+  // Layout
+  static const int _rowSize = 5;
+  static const double _cardSpacing = 16.0;
+  static const double _cardAspectRatio = 16 / 9;
 
   @override
   void initState() {
@@ -50,9 +79,29 @@ class _TVChannelsScreenState extends State<TVChannelsScreen>
       DeviceOrientation.landscapeRight,
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
+    _selectedSourceIndex = _sources
+        .indexOf(selectedSource)
+        .clamp(0, _sources.length - 1);
     _loadTVData();
   }
 
+  @override
+  void dispose() {
+    _gridScrollController.dispose();
+    _categoriesScrollController.dispose();
+    if (_ownsFocusNode) {
+      _mainFocusNode.dispose();
+    }
+
+    // Revert orientation & system UI for the rest of the app
+    SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+
+    super.dispose();
+  }
+
+  // ---------- Data fetching ----------
   Future<void> _loadTVData() async {
     if (!mounted) return;
 
@@ -80,15 +129,13 @@ class _TVChannelsScreenState extends State<TVChannelsScreen>
       if (!mounted) return;
       setState(() {
         _isLoading = false;
-        _tabController?.dispose();
-        _tabController = TabController(
-          length: categories.isEmpty ? 1 : categories.length + 1,
-          vsync: this,
-        );
-        _tabController!.addListener(() {
-          if (_tabController!.indexIsChanging) return;
-          setState(() {});
-        });
+        _selectedCategoryIndex = 0;
+        _selectedChannelIndex = 0;
+        _focusArea = _FocusArea.grid;
+      });
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _mainFocusNode.requestFocus();
       });
 
       _precacheImages();
@@ -105,8 +152,8 @@ class _TVChannelsScreenState extends State<TVChannelsScreen>
       categories.clear();
       channelsByCategory.clear();
       _isLoading = true;
-      _tabController?.dispose();
-      _tabController = null;
+      _selectedCategoryIndex = 0;
+      _selectedChannelIndex = 0;
     });
     await _loadTVData();
   }
@@ -175,6 +222,7 @@ class _TVChannelsScreenState extends State<TVChannelsScreen>
     }
   }
 
+  // ---------- Player ----------
   Future<void> _playChannel(
     String channelId,
     String title,
@@ -199,7 +247,6 @@ class _TVChannelsScreenState extends State<TVChannelsScreen>
       return;
     }
 
-    // Pleer tanlash dialogi
     final selectedPlayer = await showDialog<String>(
       context: context,
       builder:
@@ -211,7 +258,7 @@ class _TVChannelsScreenState extends State<TVChannelsScreen>
               "Pleerni tanlang",
               style: TextStyle(fontSize: 24, color: Colors.white),
             ),
-            backgroundColor: Colors.black.withOpacity(0.8),
+            backgroundColor: Colors.black.withOpacity(0.9),
             content: SizedBox(
               width: double.maxFinite,
               child: Column(
@@ -236,7 +283,7 @@ class _TVChannelsScreenState extends State<TVChannelsScreen>
               TextButton(
                 onPressed: () => Navigator.pop(context),
                 style: TextButton.styleFrom(
-                  backgroundColor: Colors.blue[700],
+                  backgroundColor: Colors.grey[800],
                   padding: const EdgeInsets.symmetric(
                     horizontal: 32,
                     vertical: 16,
@@ -254,7 +301,6 @@ class _TVChannelsScreenState extends State<TVChannelsScreen>
     if (selectedPlayer == null) return;
 
     if (selectedPlayer == 'better_player') {
-      // Ichki pleer bilan ochish
       if (mounted) {
         Navigator.push(
           context,
@@ -281,57 +327,6 @@ class _TVChannelsScreenState extends State<TVChannelsScreen>
                 controlBarHeight: 60,
                 controlBarColor: Colors.black.withOpacity(0.8),
                 progressBarPlayedColor: Colors.white,
-                customControlsBuilder: (
-                  controller,
-                  onControlsVisibilityChanged,
-                ) {
-                  return FocusScope(
-                    child: Container(
-                      height: 60,
-                      color: Colors.black.withOpacity(0.8),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          _buildControlButton(
-                            icon: Icons.play_arrow,
-                            label: "O‘ynatish",
-                            onPressed:
-                                controller.isPlaying() == true
-                                    ? null
-                                    : () {
-                                      controller.play();
-                                      onControlsVisibilityChanged(true);
-                                    },
-                            isFocused: FocusScope.of(context).hasFocus,
-                          ),
-                          const SizedBox(width: 16),
-                          _buildControlButton(
-                            icon: Icons.pause,
-                            label: "Pauza",
-                            onPressed:
-                                controller.isPlaying() == true
-                                    ? () {
-                                      controller.pause();
-                                      onControlsVisibilityChanged(true);
-                                    }
-                                    : null,
-                            isFocused: FocusScope.of(context).hasFocus,
-                          ),
-                          const SizedBox(width: 16),
-                          _buildControlButton(
-                            icon: Icons.fullscreen,
-                            label: "To‘liq ekran",
-                            onPressed: () {
-                              controller.toggleFullScreen();
-                              onControlsVisibilityChanged(true);
-                            },
-                            isFocused: FocusScope.of(context).hasFocus,
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
               ),
               notificationConfiguration: BetterPlayerNotificationConfiguration(
                 showNotification: false,
@@ -343,7 +338,6 @@ class _TVChannelsScreenState extends State<TVChannelsScreen>
         );
       }
     } else if (selectedPlayer == 'external') {
-      // Tashqi pleer bilan ochish
       try {
         final intent = AndroidIntent(
           action: 'action_view',
@@ -352,50 +346,9 @@ class _TVChannelsScreenState extends State<TVChannelsScreen>
         );
         await intent.launch();
       } catch (e) {
-        if (mounted) {
-          _showErrorDialog("Tashqi pleerni ochishda xato: $e");
-        }
+        if (mounted) _showErrorDialog("Tashqi pleerni ochishda xato: $e");
       }
     }
-  }
-
-  Widget _buildControlButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback? onPressed,
-    required bool isFocused,
-  }) {
-    return FocusScope(
-      child: Builder(
-        builder:
-            (context) => ElevatedButton(
-              onPressed: onPressed,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                backgroundColor:
-                    isFocused ? Colors.blue[500] : Colors.blue[700],
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                elevation: isFocused ? 8 : 4,
-                shadowColor: isFocused ? Colors.yellow.withOpacity(0.3) : null,
-              ),
-              child: Row(
-                children: [
-                  Icon(icon, size: 32, color: Colors.white),
-                  const SizedBox(width: 8),
-                  Text(
-                    label,
-                    style: const TextStyle(fontSize: 18, color: Colors.white),
-                  ),
-                ],
-              ),
-            ),
-      ),
-    );
   }
 
   Widget _buildPlayerOption(
@@ -404,50 +357,223 @@ class _TVChannelsScreenState extends State<TVChannelsScreen>
     required String text,
     required String value,
   }) {
-    return FocusScope(
-      child: Builder(
-        builder:
-            (context) => GestureDetector(
-              onTap: () => Navigator.pop(context, value),
-              child: Container(
-                margin: const EdgeInsets.symmetric(vertical: 8.0),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                decoration: BoxDecoration(
-                  color:
-                      FocusScope.of(context).hasFocus
-                          ? Colors.blue[500]
-                          : Colors.blue[700],
-                  borderRadius: BorderRadius.circular(8),
-                  border:
-                      FocusScope.of(context).hasFocus
-                          ? Border.all(color: Colors.yellow, width: 2)
-                          : null,
-                ),
-                child: Row(
-                  children: [
-                    Icon(icon, size: 32, color: Colors.white),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        text,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          color: Colors.white,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
+    return GestureDetector(
+      onTap: () => Navigator.pop(context, value),
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 8.0),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        decoration: BoxDecoration(
+          color: Colors.grey[800],
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 32, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                text,
+                style: const TextStyle(fontSize: 20, color: Colors.white),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
+          ],
+        ),
       ),
     );
   }
 
+  // ---------- Focus & navigation ----------
+  void _handleKeyEvent(RawKeyEvent event) {
+    if (event is! RawKeyDownEvent) return;
+
+    final key = event.logicalKey;
+
+    // Back: kengaytirilgan qo'llab-quvvatlash
+    if (key == LogicalKeyboardKey.escape ||
+        key == LogicalKeyboardKey.goBack ||
+        key == LogicalKeyboardKey.backspace ||
+        key == LogicalKeyboardKey.browserBack) {
+      Navigator.pop(context);
+      return;
+    }
+
+    final currentChannels = _currentChannels();
+    final isGridEmpty = currentChannels.isEmpty;
+
+    setState(() {
+      switch (_focusArea) {
+        case _FocusArea.sources:
+          _handleSourcesNavigation(key);
+          break;
+        case _FocusArea.categories:
+          _handleCategoriesNavigation(key);
+          break;
+        case _FocusArea.grid:
+          if (isGridEmpty) {
+            // Bo'sh holatda yuqoriga qaytish va kategoriyaga/source'ga o'tish
+            if (key == LogicalKeyboardKey.arrowUp) {
+              _focusArea =
+                  categories.isNotEmpty
+                      ? _FocusArea.categories
+                      : _FocusArea.sources;
+            }
+          } else {
+            _handleGridNavigation(key, currentChannels);
+          }
+          break;
+      }
+    });
+  }
+
+  void _handleSourcesNavigation(LogicalKeyboardKey key) {
+    if (key == LogicalKeyboardKey.arrowLeft && _selectedSourceIndex > 0) {
+      _selectedSourceIndex--;
+    } else if (key == LogicalKeyboardKey.arrowRight &&
+        _selectedSourceIndex < _sources.length - 1) {
+      _selectedSourceIndex++;
+    } else if (key == LogicalKeyboardKey.arrowDown) {
+      _focusArea =
+          categories.isNotEmpty ? _FocusArea.categories : _FocusArea.grid;
+    } else if (key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.select) {
+      final newSource = _sources[_selectedSourceIndex];
+      if (newSource != selectedSource) {
+        _onSourceChanged(newSource);
+      }
+    }
+  }
+
+  void _handleCategoriesNavigation(LogicalKeyboardKey key) {
+    final maxIndex = categories.length;
+
+    if (key == LogicalKeyboardKey.arrowLeft && _selectedCategoryIndex > 0) {
+      _selectedCategoryIndex--;
+      _selectedChannelIndex = 0;
+      _scrollCategoryIntoView();
+      _resetGridScroll();
+    } else if (key == LogicalKeyboardKey.arrowRight &&
+        _selectedCategoryIndex < maxIndex) {
+      _selectedCategoryIndex++;
+      _selectedChannelIndex = 0;
+      _scrollCategoryIntoView();
+      _resetGridScroll();
+    } else if (key == LogicalKeyboardKey.arrowUp) {
+      _focusArea = _FocusArea.sources;
+    } else if (key == LogicalKeyboardKey.arrowDown ||
+        key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.select) {
+      _focusArea = _FocusArea.grid;
+    }
+  }
+
+  void _handleGridNavigation(
+    LogicalKeyboardKey key,
+    List<dynamic> currentChannels,
+  ) {
+    final lastIndex = currentChannels.length - 1;
+
+    if (key == LogicalKeyboardKey.arrowRight &&
+        _selectedChannelIndex < lastIndex) {
+      _selectedChannelIndex++;
+      _scrollToChannelIndex();
+    } else if (key == LogicalKeyboardKey.arrowLeft &&
+        _selectedChannelIndex > 0) {
+      _selectedChannelIndex--;
+      _scrollToChannelIndex();
+    } else if (key == LogicalKeyboardKey.arrowDown) {
+      final nextIndex = _selectedChannelIndex + _rowSize;
+      if (nextIndex <= lastIndex) {
+        _selectedChannelIndex = nextIndex;
+        _scrollToChannelIndex(force: true);
+      }
+    } else if (key == LogicalKeyboardKey.arrowUp) {
+      final prevIndex = _selectedChannelIndex - _rowSize;
+      if (prevIndex >= 0) {
+        _selectedChannelIndex = prevIndex;
+        _scrollToChannelIndex(force: true);
+      } else {
+        _focusArea =
+            categories.isNotEmpty ? _FocusArea.categories : _FocusArea.sources;
+      }
+    } else if (key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.select) {
+      final channel = currentChannels[_selectedChannelIndex];
+      _playChannel(
+        selectedSource == "SalomTV" || selectedSource == "BizTV"
+            ? channel['url']
+            : channel['id'],
+        channel['title_uz'],
+        selectedSource,
+      );
+    } else if (key == LogicalKeyboardKey.keyR) {
+      _refresh();
+    }
+  }
+
+  void _scrollToChannelIndex({bool force = false}) {
+    if (!_gridScrollController.hasClients) return;
+
+    final screenWidth = MediaQuery.of(context).size.width;
+    final cardWidth =
+        (screenWidth - 48 - (_rowSize - 1) * _cardSpacing) / _rowSize;
+    final cardHeight = cardWidth / _cardAspectRatio;
+
+    final targetRow = _selectedChannelIndex ~/ _rowSize;
+    final targetOffset = targetRow * (cardHeight + _cardSpacing);
+
+    final viewportHeight = _gridScrollController.position.viewportDimension;
+    final currentOffset = _gridScrollController.offset;
+
+    final isVisible =
+        targetOffset >= currentOffset &&
+        (targetOffset + cardHeight) <= (currentOffset + viewportHeight);
+
+    if (!force && isVisible) return;
+
+    final maxOffset = _gridScrollController.position.maxScrollExtent;
+    final clampedOffset = targetOffset.clamp(0.0, maxOffset);
+
+    _gridScrollController.animateTo(
+      clampedOffset,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void _scrollCategoryIntoView() {
+    if (!_categoriesScrollController.hasClients) return;
+
+    const itemWidth = 150.0;
+    final targetOffset = _selectedCategoryIndex * (itemWidth + 24);
+    final viewportWidth =
+        _categoriesScrollController.position.viewportDimension;
+    final currentOffset = _categoriesScrollController.offset;
+
+    final isVisible =
+        targetOffset >= currentOffset &&
+        (targetOffset + itemWidth) <= (currentOffset + viewportWidth);
+
+    if (isVisible) return;
+
+    final maxOffset = _categoriesScrollController.position.maxScrollExtent;
+    final clampedOffset = (targetOffset - viewportWidth / 2 + itemWidth / 2)
+        .clamp(0.0, maxOffset);
+
+    _categoriesScrollController.animateTo(
+      clampedOffset,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void _resetGridScroll() {
+    if (_gridScrollController.hasClients) {
+      _gridScrollController.jumpTo(0);
+    }
+  }
+
+  // ---------- Helpers ----------
   void _onSourceChanged(String newSource) {
     if (newSource != selectedSource && mounted) {
       setState(() {
@@ -455,15 +581,12 @@ class _TVChannelsScreenState extends State<TVChannelsScreen>
         categories.clear();
         channelsByCategory.clear();
         _isLoading = true;
-        _tabController?.dispose();
-        _tabController = null;
+        _selectedCategoryIndex = 0;
+        _selectedChannelIndex = 0;
       });
       _loadTVData();
     }
   }
-
-  String _shortenText(String text, {int maxLength = 20}) =>
-      text.length <= maxLength ? text : '${text.substring(0, maxLength)}...';
 
   void _showErrorDialog(String message) {
     if (mounted) {
@@ -482,53 +605,37 @@ class _TVChannelsScreenState extends State<TVChannelsScreen>
                 message,
                 style: const TextStyle(fontSize: 20, color: Colors.white),
               ),
-              backgroundColor: Colors.black.withOpacity(0.8),
+              backgroundColor: Colors.black.withOpacity(0.9),
               actions: [
-                FocusScope(
-                  child: Builder(
-                    builder:
-                        (context) => TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          style: TextButton.styleFrom(
-                            backgroundColor:
-                                FocusScope.of(context).hasFocus
-                                    ? Colors.blue[500]
-                                    : Colors.blue[700],
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 32,
-                              vertical: 16,
-                            ),
-                          ),
-                          child: const Text(
-                            "OK",
-                            style: TextStyle(fontSize: 20, color: Colors.white),
-                          ),
-                        ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: TextButton.styleFrom(
+                    backgroundColor: Colors.grey[800],
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 32,
+                      vertical: 16,
+                    ),
+                  ),
+                  child: const Text(
+                    "OK",
+                    style: TextStyle(fontSize: 20, color: Colors.white),
                   ),
                 ),
-                FocusScope(
-                  child: Builder(
-                    builder:
-                        (context) => TextButton(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            _refresh();
-                          },
-                          style: TextButton.styleFrom(
-                            backgroundColor:
-                                FocusScope.of(context).hasFocus
-                                    ? Colors.blue[500]
-                                    : Colors.blue[700],
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 32,
-                              vertical: 16,
-                            ),
-                          ),
-                          child: const Text(
-                            "Qayta urinish",
-                            style: TextStyle(fontSize: 20, color: Colors.white),
-                          ),
-                        ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _refresh();
+                  },
+                  style: TextButton.styleFrom(
+                    backgroundColor: kPinkColor,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 32,
+                      vertical: 16,
+                    ),
+                  ),
+                  child: const Text(
+                    "Qayta urinish",
+                    style: TextStyle(fontSize: 20, color: Colors.white),
                   ),
                 ),
               ],
@@ -537,401 +644,346 @@ class _TVChannelsScreenState extends State<TVChannelsScreen>
     }
   }
 
-  int _getCurrentCategoryChannelCount() {
-    final currentIndex = _tabController?.index ?? 0;
-    if (currentIndex == 0 || categories.isEmpty) {
-      return totalChannels;
-    } else {
-      final categoryId = categories[currentIndex - 1]['id'];
-      return channelsByCategory[categoryId]?.length ?? 0;
-    }
+  List<dynamic> _currentChannels() {
+    final key =
+        _selectedCategoryIndex == 0
+            ? 'all'
+            : categories[_selectedCategoryIndex - 1]['id'];
+    return channelsByCategory[key] ?? [];
   }
 
-  @override
-  void dispose() {
-    _tabController?.dispose();
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    super.dispose();
+  int _currentChannelCount() => _currentChannels().length;
+
+  // ---------- UI ----------
+  Widget _buildSourceRow() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      child: Row(
+        children:
+            _sources.asMap().entries.map((entry) {
+              final idx = entry.key;
+              final source = entry.value;
+              final isSelected = selectedSource == source;
+              final isFocused =
+                  _focusArea == _FocusArea.sources &&
+                  idx == _selectedSourceIndex;
+
+              return Padding(
+                padding: const EdgeInsets.only(right: 24.0),
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() => _selectedSourceIndex = idx);
+                    _onSourceChanged(source);
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isSelected ? kPinkColor : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color:
+                            isFocused
+                                ? Colors.white
+                                : (isSelected ? kPinkColor : Colors.grey[700]!),
+                        width: isFocused ? 3 : 2,
+                      ),
+                    ),
+                    child: Text(
+                      source,
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight:
+                            isSelected ? FontWeight.bold : FontWeight.normal,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+      ),
+    );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black.withOpacity(0.8),
-        elevation: 4,
-        title: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              "TV Kanallar",
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
+  Widget _buildCategoriesRow() {
+    if (categories.isEmpty) return const SizedBox.shrink();
+
+    final allCategories = [
+      {'id': 'all', 'title_uz': 'Barchasi'},
+      ...categories,
+    ];
+
+    return Container(
+      height: 60,
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: ListView.builder(
+        controller: _categoriesScrollController,
+        scrollDirection: Axis.horizontal,
+        itemCount: allCategories.length,
+        itemBuilder: (context, index) {
+          final category = allCategories[index];
+          final isSelected = _selectedCategoryIndex == index;
+          final isFocused =
+              _focusArea == _FocusArea.categories &&
+              _selectedCategoryIndex == index;
+
+          return Padding(
+            padding: const EdgeInsets.only(right: 24.0),
+            child: GestureDetector(
+              onTap: () {
+                setState(() {
+                  _selectedCategoryIndex = index;
+                  _selectedChannelIndex = 0;
+                });
+                _resetGridScroll();
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                decoration: BoxDecoration(
+                  border:
+                      isFocused
+                          ? const Border(
+                            bottom: BorderSide(color: Colors.white, width: 3),
+                          )
+                          : null,
+                ),
+                child: Center(
+                  child: Text(
+                    category['title_uz'],
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight:
+                          isSelected ? FontWeight.bold : FontWeight.normal,
+                      color: isSelected ? kPinkColor : Colors.white,
+                    ),
+                  ),
+                ),
               ),
             ),
-            SizedBox(
-              width: 300,
-              height: 48,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                children:
-                    TVApiService.baseUrls.keys.map((source) {
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                        child: FocusScope(
-                          child: Builder(
-                            builder:
-                                (context) => GestureDetector(
-                                  onTap: () => _onSourceChanged(source),
-                                  child: AnimatedContainer(
-                                    duration: const Duration(milliseconds: 200),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 12,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color:
-                                          selectedSource == source
-                                              ? Colors.blue[500]
-                                              : Colors.blue[700],
-                                      borderRadius: BorderRadius.circular(8),
-                                      border:
-                                          FocusScope.of(context).hasFocus
-                                              ? Border.all(
-                                                color: Colors.yellow,
-                                                width: 2,
-                                              )
-                                              : null,
-                                      boxShadow:
-                                          FocusScope.of(context).hasFocus
-                                              ? [
-                                                BoxShadow(
-                                                  color: Colors.yellow
-                                                      .withOpacity(0.3),
-                                                  blurRadius: 8,
-                                                ),
-                                              ]
-                                              : null,
-                                    ),
-                                    child: Text(
-                                      source,
-                                      style: const TextStyle(
-                                        fontSize: 20,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildChannelGrid() {
+    final channels = _currentChannels();
+
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: kPinkColor, strokeWidth: 6),
+      );
+    }
+
+    if (channels.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              "Kanallar mavjud emas",
+              style: TextStyle(fontSize: 24, color: Colors.white),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: kPinkColor, width: 2),
+              ),
+              onPressed: _refresh,
+              child: const Text(
+                "Qayta yuklash",
+                style: TextStyle(color: kPinkColor, fontSize: 18),
               ),
             ),
           ],
         ),
-        actions: [
-          FocusScope(
-            child: Builder(
-              builder:
-                  (context) => IconButton(
-                    icon: const Icon(
-                      Icons.refresh,
-                      size: 32,
-                      color: Colors.white,
-                    ),
-                    onPressed: _refresh,
-                    tooltip: 'Yangilash',
-                    style: ButtonStyle(
-                      backgroundColor: MaterialStateProperty.resolveWith(
-                        (states) =>
-                            FocusScope.of(context).hasFocus
-                                ? Colors.blue[500]
-                                : Colors.blue[700],
-                      ),
-                    ),
-                  ),
-            ),
-          ),
-        ],
+      );
+    }
+
+    return GridView.builder(
+      controller: _gridScrollController,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: _rowSize,
+        mainAxisSpacing: _cardSpacing,
+        crossAxisSpacing: _cardSpacing,
+        childAspectRatio: _cardAspectRatio,
       ),
-      body:
-          _isLoading
-              ? const Center(
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 6,
-                ),
-              )
-              : channelsByCategory.isEmpty
-              ? const Center(
-                child: Text(
-                  "Kanallar mavjud emas",
-                  style: TextStyle(fontSize: 24, color: Colors.white),
-                ),
-              )
-              : _tabController == null
-              ? const Center(
-                child: Text(
-                  "Tablarni yuklashda xato",
-                  style: TextStyle(fontSize: 24, color: Colors.white),
-                ),
-              )
-              : SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16.0,
-                    vertical: 16.0,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (categories.isNotEmpty)
-                        SizedBox(
-                          height: 60,
-                          child: ListView(
-                            scrollDirection: Axis.horizontal,
-                            physics: const BouncingScrollPhysics(),
-                            children: [
-                              _buildCategoryButton(
-                                text: "Barchasi",
-                                isSelected: _tabController?.index == 0,
-                                onTap: () {
-                                  _tabController?.animateTo(0);
-                                  setState(() {});
-                                },
-                              ),
-                              ...categories.asMap().entries.map(
-                                (entry) => _buildCategoryButton(
-                                  text: _shortenText(
-                                    entry.value['title_uz'],
-                                    maxLength: 20,
-                                  ),
-                                  isSelected:
-                                      _tabController?.index == entry.key + 1,
-                                  onTap: () {
-                                    _tabController?.animateTo(entry.key + 1);
-                                    setState(() {});
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      const SizedBox(height: 12),
-                      Text(
-                        "Kanallar soni: ${_getCurrentCategoryChannelCount()} ta",
-                        style: const TextStyle(
-                          fontSize: 22,
-                          color: Colors.white70,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      SizedBox(
-                        height: MediaQuery.of(context).size.height * 0.8,
-                        child: TabBarView(
-                          controller: _tabController,
-                          children: [
-                            _buildChannelGrid('all'),
-                            if (categories.isNotEmpty)
-                              ...categories.map(
-                                (category) => _buildChannelGrid(category['id']),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+      itemCount: channels.length,
+      itemBuilder: (context, index) {
+        final channel = channels[index];
+        final isSelected =
+            _focusArea == _FocusArea.grid && index == _selectedChannelIndex;
+        return _buildChannelCard(
+          channel: channel,
+          isSelected: isSelected,
+          onTap: () {
+            setState(() => _selectedChannelIndex = index);
+            _playChannel(
+              selectedSource == "SalomTV" || selectedSource == "BizTV"
+                  ? channel['url']
+                  : channel['id'],
+              channel['title_uz'],
+              selectedSource,
+            );
+          },
+        );
+      },
     );
   }
 
-  Widget _buildCategoryButton({
-    required String text,
+  Widget _buildChannelCard({
+    required dynamic channel,
     required bool isSelected,
     required VoidCallback onTap,
   }) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 16.0),
-      child: FocusScope(
-        child: Builder(
-          builder:
-              (context) => GestureDetector(
-                onTap: onTap,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        transform: Matrix4.identity()..scale(isSelected ? 1.08 : 1.0),
+        transformAlignment: Alignment.center,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: isSelected ? Border.all(color: kPinkColor, width: 3) : null,
+          boxShadow:
+              isSelected
+                  ? [
+                    BoxShadow(
+                      color: kPinkColor.withOpacity(0.5),
+                      blurRadius: 20,
+                      spreadRadius: 2,
+                    ),
+                  ]
+                  : [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              CachedNetworkImage(
+                imageUrl: channel['image'] ?? 'https://placehold.co/300x169',
+                cacheManager: customCacheManager,
+                fit: BoxFit.cover,
+                placeholder:
+                    (context, url) => Container(
+                      color: Colors.grey[900],
+                      child: const Center(
+                        child: CircularProgressIndicator(color: Colors.white),
+                      ),
+                    ),
+                errorWidget:
+                    (context, url, error) => Container(
+                      color: Colors.grey[900],
+                      child: const Center(
+                        child: Icon(
+                          Icons.broken_image,
+                          size: 48,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+              ),
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
+                    horizontal: 12,
+                    vertical: 8,
                   ),
                   decoration: BoxDecoration(
-                    color: isSelected ? Colors.blue[500] : Colors.blue[700],
-                    borderRadius: BorderRadius.circular(8),
-                    border:
-                        FocusScope.of(context).hasFocus
-                            ? Border.all(color: Colors.yellow, width: 2)
-                            : null,
-                    boxShadow:
-                        FocusScope.of(context).hasFocus
-                            ? [
-                              BoxShadow(
-                                color: Colors.yellow.withOpacity(0.3),
-                                blurRadius: 8,
-                              ),
-                            ]
-                            : null,
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.9),
+                        Colors.transparent,
+                      ],
+                    ),
                   ),
                   child: Text(
-                    text,
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight:
-                          isSelected ? FontWeight.bold : FontWeight.normal,
+                    channel['title_uz'] ?? 'Noma\'lum',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
                       color: Colors.white,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildChannelGrid(String categoryId) {
-    final channels = channelsByCategory[categoryId] ?? [];
-    return FocusScope(
-      child: GridView.builder(
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 16,
-          childAspectRatio: 1.3,
-        ),
-        cacheExtent: 500,
-        itemCount: channels.length,
-        itemBuilder: (context, index) {
-          final channel = channels[index];
-          return FocusScope(
-            child: Builder(
-              builder:
-                  (context) => GestureDetector(
-                    onTap:
-                        () => _playChannel(
-                          selectedSource == "SalomTV" ||
-                                  selectedSource == "BizTV"
-                              ? channel['url']
-                              : channel['id'],
-                          channel['title_uz'],
-                          selectedSource,
-                        ),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      transform:
-                          FocusScope.of(context).hasFocus
-                              ? (Matrix4.identity()..scale(1.1))
-                              : Matrix4.identity(),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        color: Colors.black.withOpacity(0.8),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.2),
-                            blurRadius: 6,
-                            offset: const Offset(0, 2),
-                          ),
-                          if (FocusScope.of(context).hasFocus)
-                            BoxShadow(
-                              color: Colors.yellow.withOpacity(0.3),
-                              blurRadius: 8,
-                            ),
-                        ],
-                        border:
-                            FocusScope.of(context).hasFocus
-                                ? Border.all(color: Colors.yellow, width: 2)
-                                : null,
-                      ),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(12),
-                          onTap:
-                              () => _playChannel(
-                                selectedSource == "SalomTV" ||
-                                        selectedSource == "BizTV"
-                                    ? channel['url']
-                                    : channel['id'],
-                                channel['title_uz'],
-                                selectedSource,
-                              ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(12.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                CachedNetworkImage(
-                                  imageUrl:
-                                      channel['image'] ??
-                                      'https://placehold.co/150x150',
-                                  cacheManager: customCacheManager,
-                                  width: double.infinity,
-                                  height: 180,
-                                  fit: BoxFit.cover,
-                                  placeholder:
-                                      (context, url) => Container(
-                                        height: 180,
-                                        color: Colors.black.withOpacity(0.8),
-                                        child: const Center(
-                                          child: CircularProgressIndicator(
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                      ),
-                                  errorWidget:
-                                      (context, url, error) => Container(
-                                        height: 180,
-                                        color: Colors.black.withOpacity(0.8),
-                                        child: const Center(
-                                          child: Icon(
-                                            Icons.broken_image,
-                                            size: 48,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                      ),
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  _shortenText(
-                                    channel['title_uz'] ?? 'Noma\'lum',
-                                    maxLength: 20,
-                                  ),
-                                  style: const TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.white,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
+  // ---------- Build ----------
+  @override
+  Widget build(BuildContext context) {
+    return RawKeyboardListener(
+      focusNode: _mainFocusNode,
+      autofocus: false,
+      onKey: _handleKeyEvent,
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header row with reload button for TV (remote-friendly)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(child: _buildSourceRow()),
+                    IconButton(
+                      tooltip: "Qayta yuklash (R)",
+                      onPressed: _refresh,
+                      icon: const Icon(Icons.refresh, color: Colors.white),
                     ),
-                  ),
-            ),
-          );
-        },
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              if (categories.isNotEmpty) _buildCategoriesRow(),
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                child: Text(
+                  "Kanallar: ${_currentChannelCount()}",
+                  style: const TextStyle(fontSize: 18, color: Colors.white70),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: _refresh,
+                  color: kPinkColor,
+                  child: _buildChannelGrid(),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
