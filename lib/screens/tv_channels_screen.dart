@@ -281,10 +281,13 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
     }
 
     final selectedPlayer = await _showPlayerSelectionDialog();
+    
+    // Always restore focus after dialog closes
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _requestFocusSafely();
+    });
+    
     if (selectedPlayer == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _requestFocusSafely();
-      });
       return;
     }
 
@@ -345,6 +348,7 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
     return await showDialog<String>(
       context: context,
       barrierDismissible: false,
+      useRootNavigator: false, // Use local navigator to prevent WillPopScope interference
       builder:
           (dialogContext) => _PlayerSelectionDialog(
             onSelected: (value) => Navigator.pop(dialogContext, value),
@@ -358,6 +362,7 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
       showDialog(
         context: context,
         barrierDismissible: false,
+        useRootNavigator: false, // Use local navigator to prevent WillPopScope interference
         builder:
             (dialogContext) => _ErrorDialog(
               message: message,
@@ -973,22 +978,35 @@ class _PlayerSelectionDialogState extends State<_PlayerSelectionDialog> {
 
     final key = event.logicalKey;
 
-    if (key == LogicalKeyboardKey.arrowDown && _selectedIndex < 1) {
+    // Down arrow: move to next option (0 -> 1 -> 2 for cancel button)
+    if (key == LogicalKeyboardKey.arrowDown && _selectedIndex < 2) {
       setState(() => _selectedIndex++);
       return KeyEventResult.handled;
-    } else if (key == LogicalKeyboardKey.arrowUp && _selectedIndex > 0) {
+    } 
+    // Up arrow: move to previous option
+    else if (key == LogicalKeyboardKey.arrowUp && _selectedIndex > 0) {
       setState(() => _selectedIndex--);
       return KeyEventResult.handled;
-    } else if (key == LogicalKeyboardKey.enter ||
+    } 
+    // Enter/Select: activate selected option
+    else if (key == LogicalKeyboardKey.enter ||
         key == LogicalKeyboardKey.select) {
       if (_selectedIndex == 0) {
         widget.onSelected('better_player');
-      } else {
+      } else if (_selectedIndex == 1) {
         widget.onSelected('external');
+      } else {
+        // Cancel button selected
+        widget.onCancel();
       }
       return KeyEventResult.handled;
-    } else if (key == LogicalKeyboardKey.escape ||
-        key == LogicalKeyboardKey.goBack) {
+    } 
+    // Back/Escape: cancel dialog - handle all possible back keys
+    else if (key == LogicalKeyboardKey.escape ||
+        key == LogicalKeyboardKey.goBack ||
+        key == LogicalKeyboardKey.backspace ||
+        key == LogicalKeyboardKey.browserBack ||
+        key == LogicalKeyboardKey.gameButtonB) {
       widget.onCancel();
       return KeyEventResult.handled;
     }
@@ -1020,22 +1038,10 @@ class _PlayerSelectionDialogState extends State<_PlayerSelectionDialog> {
                 "Ichki pleer:  Better Player",
               ),
               _buildOption(1, Icons.video_library, "Tashqi pleer bilan ochish"),
+              _buildOption(2, Icons.close, "Bekor qilish"),
             ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: widget.onCancel,
-            style: TextButton.styleFrom(
-              backgroundColor: Colors.grey[800],
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-            ),
-            child: const Text(
-              "Bekor qilish",
-              style: TextStyle(fontSize: 20, color: Colors.white),
-            ),
-          ),
-        ],
       ),
     );
   }
