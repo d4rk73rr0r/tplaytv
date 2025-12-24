@@ -112,7 +112,7 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
     });
   }
 
-  // ✅ Xavfsiz focus so'rash - made public for main.dart access
+  // Safe focus request method
   void requestFocus() {
     if (!_mainFocusNode.hasFocus && ModalRoute.of(context)?.isCurrent == true) {
       _mainFocusNode.requestFocus();
@@ -286,10 +286,9 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
 
     final selectedPlayer = await _showPlayerSelectionDialog();
     
-    // Always restore focus after dialog closes
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _requestFocusSafely();
-    });
+    // Restore focus after dialog closes, but before opening player
+    // (player screen will handle its own focus)
+    if (mounted) _requestFocusSafely();
     
     if (selectedPlayer == null) {
       return;
@@ -331,6 +330,7 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
             ),
           ),
         );
+        // Restore focus again after returning from player
         if (mounted) _requestFocusSafely();
       }
     } else if (selectedPlayer == 'external') {
@@ -344,7 +344,6 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
       } catch (e) {
         if (mounted) _showErrorDialog("Tashqi pleerni ochishda xato: $e");
       }
-      if (mounted) _requestFocusSafely();
     }
   }
 
@@ -433,7 +432,8 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
     return key == LogicalKeyboardKey.escape ||
         key == LogicalKeyboardKey.goBack ||
         key == LogicalKeyboardKey.backspace ||
-        key == LogicalKeyboardKey.browserBack;
+        key == LogicalKeyboardKey.browserBack ||
+        key == LogicalKeyboardKey.gameButtonB;
   }
 
   bool _handleSourcesNavigation(LogicalKeyboardKey key) {
