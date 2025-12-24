@@ -90,6 +90,9 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen>
     with TickerProviderStateMixin, RouteAware {
+  static const int _indexScreenIndex = 0;
+  static const int _tvChannelsScreenIndex = 1;
+  
   int _selectedIndex = 0;
   bool _isSidebarExpanded = false;
 
@@ -217,11 +220,11 @@ class _MainScreenState extends State<MainScreen>
     debugPrint('🎯 Main: Requesting focus on screen index $_selectedIndex');
     
     // Request focus on the appropriate screen
-    if (_selectedIndex == 0 && _indexScreenKey.currentState != null) {
-      _indexScreenKey.currentState!._requestContentFocus();
+    if (_selectedIndex == _indexScreenIndex && _indexScreenKey.currentState != null) {
+      _indexScreenKey.currentState!.requestFocus();
       debugPrint('🎯 Main: Requested focus on IndexScreen');
-    } else if (_selectedIndex == 1 && _tvChannelsScreenKey.currentState != null) {
-      _tvChannelsScreenKey.currentState!._requestFocusSafely();
+    } else if (_selectedIndex == _tvChannelsScreenIndex && _tvChannelsScreenKey.currentState != null) {
+      _tvChannelsScreenKey.currentState!.requestFocus();
       debugPrint('🎯 Main: Requested focus on TVChannelsScreen');
     } else {
       // Fallback: request focus on the content node

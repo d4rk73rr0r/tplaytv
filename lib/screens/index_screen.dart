@@ -295,6 +295,11 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
       }
     });
   }
+  
+  // Public method for external focus management
+  void requestFocus() {
+    _requestContentFocus();
+  }
 
   @override
   void dispose() {

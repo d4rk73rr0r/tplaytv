@@ -112,12 +112,16 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
     });
   }
 
-  // ✅ Xavfsiz focus so'rash
-  void _requestFocusSafely() {
+  // ✅ Xavfsiz focus so'rash - made public for main.dart access
+  void requestFocus() {
     if (!_mainFocusNode.hasFocus && ModalRoute.of(context)?.isCurrent == true) {
       _mainFocusNode.requestFocus();
       debugPrint('🎯 TV Channels:  Focus requested');
     }
+  }
+  
+  void _requestFocusSafely() {
+    requestFocus();
   }
 
   @override
@@ -956,6 +960,11 @@ class _PlayerSelectionDialog extends StatefulWidget {
 }
 
 class _PlayerSelectionDialogState extends State<_PlayerSelectionDialog> {
+  static const int _internalPlayerIndex = 0;
+  static const int _externalPlayerIndex = 1;
+  static const int _cancelIndex = 2;
+  static const int _maxOptionIndex = 2;
+  
   int _selectedIndex = 0;
   final FocusNode _dialogFocusNode = FocusNode();
 
@@ -978,8 +987,8 @@ class _PlayerSelectionDialogState extends State<_PlayerSelectionDialog> {
 
     final key = event.logicalKey;
 
-    // Down arrow: move to next option (0 -> 1 -> 2 for cancel button)
-    if (key == LogicalKeyboardKey.arrowDown && _selectedIndex < 2) {
+    // Down arrow: move to next option
+    if (key == LogicalKeyboardKey.arrowDown && _selectedIndex < _maxOptionIndex) {
       setState(() => _selectedIndex++);
       return KeyEventResult.handled;
     } 
@@ -991,12 +1000,11 @@ class _PlayerSelectionDialogState extends State<_PlayerSelectionDialog> {
     // Enter/Select: activate selected option
     else if (key == LogicalKeyboardKey.enter ||
         key == LogicalKeyboardKey.select) {
-      if (_selectedIndex == 0) {
+      if (_selectedIndex == _internalPlayerIndex) {
         widget.onSelected('better_player');
-      } else if (_selectedIndex == 1) {
+      } else if (_selectedIndex == _externalPlayerIndex) {
         widget.onSelected('external');
-      } else {
-        // Cancel button selected
+      } else if (_selectedIndex == _cancelIndex) {
         widget.onCancel();
       }
       return KeyEventResult.handled;
@@ -1033,12 +1041,12 @@ class _PlayerSelectionDialogState extends State<_PlayerSelectionDialog> {
             mainAxisSize: MainAxisSize.min,
             children: [
               _buildOption(
-                0,
+                _internalPlayerIndex,
                 Icons.play_circle_filled,
                 "Ichki pleer:  Better Player",
               ),
-              _buildOption(1, Icons.video_library, "Tashqi pleer bilan ochish"),
-              _buildOption(2, Icons.close, "Bekor qilish"),
+              _buildOption(_externalPlayerIndex, Icons.video_library, "Tashqi pleer bilan ochish"),
+              _buildOption(_cancelIndex, Icons.close, "Bekor qilish"),
             ],
           ),
         ),
