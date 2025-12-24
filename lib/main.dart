@@ -97,8 +97,8 @@ class _MainScreenState extends State<MainScreen>
   bool _isSidebarExpanded = false;
 
   // ✅ Create the screens with keys so we can access them
-  final GlobalKey<_IndexScreenContentState> _indexScreenKey = GlobalKey();
-  final GlobalKey<_TVChannelsScreenState> _tvChannelsScreenKey = GlobalKey();
+  final GlobalKey<IndexScreenContentState> _indexScreenKey = GlobalKey();
+  final GlobalKey<TVChannelsScreenState> _tvChannelsScreenKey = GlobalKey();
   
   late final List<Widget> _screens;
 

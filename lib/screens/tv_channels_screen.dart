@@ -36,10 +36,10 @@ class TVChannelsScreen extends StatefulWidget {
   final FocusNode? focusNode;
 
   @override
-  State<TVChannelsScreen> createState() => _TVChannelsScreenState();
+  State<TVChannelsScreen> createState() => TVChannelsScreenState();
 }
 
-class _TVChannelsScreenState extends State<TVChannelsScreen> {
+class TVChannelsScreenState extends State<TVChannelsScreen> {
   // Data
   List<dynamic> categories = [];
   Map<String, List<dynamic>> channelsByCategory = {};

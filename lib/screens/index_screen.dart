@@ -27,7 +27,7 @@ final customCacheManager = CacheManager(
 
 // Yordamchi:  navigator popdan keyin fokusni tiklash uchun
 void _requestIndexFocus(BuildContext context) {
-  final state = context.findAncestorStateOfType<_IndexScreenContentState>();
+  final state = context.findAncestorStateOfType<IndexScreenContentState>();
   state?._requestContentFocus();
 }
 
@@ -203,10 +203,10 @@ class IndexScreenContent extends StatefulWidget {
   const IndexScreenContent({super.key, this.focusNode});
 
   @override
-  State<IndexScreenContent> createState() => _IndexScreenContentState();
+  State<IndexScreenContent> createState() => IndexScreenContentState();
 }
 
-class _IndexScreenContentState extends State<IndexScreenContent> {
+class IndexScreenContentState extends State<IndexScreenContent> {
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
   // ✅ YANGI: Internal yoki external FocusNode
