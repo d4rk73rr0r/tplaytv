@@ -290,8 +290,9 @@ class IndexScreenContentState extends State<IndexScreenContent> {
 
   void _requestContentFocus() {
     Future.microtask(() {
-      if (mounted && ModalRoute.of(context)?.isCurrent == true) {
+      if (mounted) {
         _contentFocusNode.requestFocus();
+        debugPrint('🎯 IndexScreen: Focus requested (hasFocus: ${_contentFocusNode.hasFocus})');
       }
     });
   }

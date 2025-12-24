@@ -117,9 +117,10 @@ class TVChannelsScreenState extends State<TVChannelsScreen> {
   /// Call this when the screen becomes visible (e.g., after switching from another screen)
   /// to ensure keyboard/remote navigation works properly.
   void requestFocus() {
-    if (!_mainFocusNode.hasFocus && ModalRoute.of(context)?.isCurrent == true) {
+    // Always try to request focus when explicitly called
+    if (!_mainFocusNode.hasFocus) {
       _mainFocusNode.requestFocus();
-      debugPrint('🎯 TV Channels: Focus requested');
+      debugPrint('🎯 TV Channels: Focus requested (hasFocus: ${_mainFocusNode.hasFocus})');
     }
   }
   
