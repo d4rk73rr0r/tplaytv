@@ -25,7 +25,7 @@ final customCacheManager = CacheManager(
   ),
 );
 
-// Yordamchi: navigator popdan keyin fokusni tiklash uchun
+// Yordamchi:  navigator popdan keyin fokusni tiklash uchun
 void _requestIndexFocus(BuildContext context) {
   final state = context.findAncestorStateOfType<_IndexScreenContentState>();
   state?._requestContentFocus();
@@ -181,20 +181,26 @@ class IndexScreenProvider with ChangeNotifier {
   }
 }
 
+// ✅ YANGI:  focusNode parametr qo'shildi
 class IndexScreen extends StatelessWidget {
-  const IndexScreen({super.key});
+  final FocusNode? focusNode;
+
+  const IndexScreen({super.key, this.focusNode});
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) => IndexScreenProvider(),
-      child: const IndexScreenContent(),
+      child: IndexScreenContent(focusNode: focusNode), // ✅ Uzatish
     );
   }
 }
 
+// ✅ YANGI: focusNode parametr qo'shildi
 class IndexScreenContent extends StatefulWidget {
-  const IndexScreenContent({super.key});
+  final FocusNode? focusNode;
+
+  const IndexScreenContent({super.key, this.focusNode});
 
   @override
   State<IndexScreenContent> createState() => _IndexScreenContentState();
@@ -203,8 +209,13 @@ class IndexScreenContent extends StatefulWidget {
 class _IndexScreenContentState extends State<IndexScreenContent> {
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
-  // Focus nodes for TV remote control
-  final FocusNode _contentFocusNode = FocusNode();
+  // ✅ YANGI: Internal yoki external FocusNode
+  late final FocusNode _internalFocusNode = FocusNode(
+    debugLabel: 'IndexInternal',
+  );
+  FocusNode get _contentFocusNode => widget.focusNode ?? _internalFocusNode;
+  bool get _ownsFocusNode => widget.focusNode == null;
+
   int _selectedSectionIndex = 0;
   int _selectedItemIndex = 0;
 
@@ -228,10 +239,6 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
 
     _scrollController = ScrollController();
 
-    // Request focus after frame is built
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _contentFocusNode.requestFocus();
-    });
     _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
       List<ConnectivityResult> results,
     ) {
@@ -242,7 +249,7 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
         );
         provider.setGlobalError('Tarmoq xatosi', null);
         _showErrorDialog(
-          'Tarmoq aloqasi yo‘q. Iltimos, internet aloqasini tekshiring.',
+          'Tarmoq aloqasi yo\'q.  Iltimos, internet aloqasini tekshiring.',
         );
       } else {
         _fetchInitialData();
@@ -257,9 +264,25 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Re-request focus when widget becomes active again
+    // ✅ Re-request focus when widget becomes active again
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && !_contentFocusNode.hasFocus) {
+      if (mounted &&
+          !_contentFocusNode.hasFocus &&
+          ModalRoute.of(context)?.isCurrent == true) {
+        _contentFocusNode.requestFocus();
+        debugPrint('🎯 IndexScreen: Focus requested');
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(IndexScreenContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // ✅ Focus'ni tiklash widget yangilanganda
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted &&
+          !_contentFocusNode.hasFocus &&
+          ModalRoute.of(context)?.isCurrent == true) {
         _contentFocusNode.requestFocus();
       }
     });
@@ -267,17 +290,22 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
 
   void _requestContentFocus() {
     Future.microtask(() {
-      if (mounted) _contentFocusNode.requestFocus();
+      if (mounted && ModalRoute.of(context)?.isCurrent == true) {
+        _contentFocusNode.requestFocus();
+      }
     });
   }
 
   @override
   void dispose() {
     _connectivitySubscription?.cancel();
-    _contentFocusNode.dispose();
     _scrollController.dispose();
     for (final controller in _horizontalScrollControllers.values) {
       controller.dispose();
+    }
+    // ✅ Faqat o'zimizniki bo'lsa dispose qilish
+    if (_ownsFocusNode) {
+      _contentFocusNode.dispose();
     }
     super.dispose();
   }
@@ -288,7 +316,7 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
     if (!(await _checkInternetConnection())) {
       provider.setGlobalError('Tarmoq xatosi', null);
       _showErrorDialog(
-        'Tarmoq aloqasi yo‘q. Iltimos, internet aloqasini tekshiring.',
+        'Tarmoq aloqasi yo\'q. Iltimos, internet aloqasini tekshiring.',
       );
       return;
     }
@@ -308,7 +336,7 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
                 isAll: false,
                 perPage: 10,
                 fields:
-                    'name_uz,name_ru,name_en,id,films.id,films.name_uz,films.name_ru,films.publish_time,films.type,films.paid,films.year,films.tags.id,films.tags.title_uz,films.tags.title_en,films.files.thumbnails',
+                    'name_uz,name_ru,name_en,id,films. id,films.name_uz,films.name_ru,films.publish_time,films.type,films.paid,films.year,films.tags. id,films.tags.title_uz,films.tags.title_en,films.files.thumbnails',
               ),
           onSuccess: (response) {
             final films = response['data'] ?? [];
@@ -316,7 +344,7 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
           },
           onError:
               (error, statusCode) => provider.setGlobalError(error, statusCode),
-          errorMessage: 'So‘ngi ko‘rilganlarni yuklashda xato',
+          errorMessage: 'So\'ngi ko\'rilganlarni yuklashda xato',
         ),
         _fetchData(
           fetchFunction: ApiService.getRecommendedFilms,
@@ -338,8 +366,8 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
         _fetchCategories(),
       ]);
     } catch (e) {
-      provider.setGlobalError('Umumiy xato: $e', null);
-      _showErrorDialog('Ma\'lumotlarni yuklashda xato: $e');
+      provider.setGlobalError('Umumiy xato:  $e', null);
+      _showErrorDialog('Ma\'lumotlarni yuklashda xato:  $e');
     }
   }
 
@@ -353,7 +381,7 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
       final data = await fetchFunction();
       if (data is Map<String, dynamic> && data['success'] == false) {
         final statusCode = data['statusCode'] as int?;
-        final error = data['error']?.toString() ?? 'Noma’lum xato';
+        final error = data['error']?.toString() ?? 'Noma\'lum xato';
         onError(error, statusCode);
       } else {
         onSuccess(data);
@@ -452,7 +480,7 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
     final provider = Provider.of<IndexScreenProvider>(context, listen: false);
     if (!(await _checkInternetConnection())) {
       _showErrorDialog(
-        'Tarmoq aloqasi yo‘q. Iltimos, internet aloqasini tekshiring.',
+        'Tarmoq aloqasi yo\'q.  Iltimos, internet aloqasini tekshiring.',
       );
       return;
     }
@@ -468,7 +496,6 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
 
   // Scroll to the selected section
   void _scrollToSelectedSection() {
-    // duration qisqartirildi (180 ms)
     GlobalKey? key;
     int currentSection = 0;
     final provider = Provider.of<IndexScreenProvider>(context, listen: false);
@@ -869,7 +896,7 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
       backgroundColor: Colors.black,
       body: FocusTraversalGroup(
         child: Focus(
-          autofocus: true,
+          autofocus: false, // ✅ Parent nazorat qiladi
           focusNode: _contentFocusNode,
           onKeyEvent: _handleContentKeyEvent,
           skipTraversal: false,
@@ -893,6 +920,7 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
                         child: Center(
                           child: Text(
                             'Bannerlar mavjud emas',
+                            // Qism 1 ning davomi...
                             style: TextStyle(fontSize: 20, color: Colors.white),
                           ),
                         ),
@@ -1029,7 +1057,7 @@ class _BannerCarouselState extends State<BannerCarousel> {
       CarouselSliderController();
   final List<FocusNode> _buttonFocusNodes = [];
 
-  int _currentPage = 0; // YANGI: joriy sahifa indeksini saqlaymiz
+  int _currentPage = 0;
 
   @override
   void initState() {
@@ -1062,7 +1090,6 @@ class _BannerCarouselState extends State<BannerCarousel> {
     final provider = Provider.of<IndexScreenProvider>(context, listen: false);
     final banners = provider.banners;
 
-    // Add missing focus nodes if banner count increased
     if (_buttonFocusNodes.length < banners.length) {
       final missingCount = banners.length - _buttonFocusNodes.length;
       for (int i = 0; i < missingCount; i++) {
@@ -1070,7 +1097,6 @@ class _BannerCarouselState extends State<BannerCarousel> {
       }
     }
 
-    // YANGI: Seksiyaga qaytganda yoki tanlangan indeks o'zgarganda karuselni sinxronlash
     final bool becameSelected = widget.isSelected && !oldWidget.isSelected;
     final bool selectedIndexChanged =
         widget.selectedIndex != oldWidget.selectedIndex;
@@ -1103,7 +1129,7 @@ class _BannerCarouselState extends State<BannerCarousel> {
         enlargeCenterPage: false,
         viewportFraction: 1.0,
         onPageChanged: (index, reason) {
-          _currentPage = index; // YANGI: joriy sahifa indeksini yangilash
+          _currentPage = index;
           if (index < _buttonFocusNodes.length) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted && _buttonFocusNodes[index].canRequestFocus) {
@@ -1279,7 +1305,7 @@ class BannerItem extends StatelessWidget {
   }
 }
 
-// Latest Viewed Section - Improved with scroll handling
+// Latest Viewed Section
 class LatestViewedSection extends StatefulWidget {
   final bool isSelected;
   final int selectedIndex;
@@ -1603,7 +1629,7 @@ class RecommendedFilmsSection extends StatelessWidget {
   }
 }
 
-// Genres Section - Improved version with better scroll handling
+// Genres Section
 class GenresSection extends StatefulWidget {
   final VoidCallback onRetry;
   final bool isSelected;
@@ -1689,7 +1715,7 @@ class _GenresSectionState extends State<GenresSection> {
       return Padding(
         padding: const EdgeInsets.all(24.0),
         child: ErrorScreen(
-          errorMessage: "Janrlarni yuklashda xato: $error",
+          errorMessage: "Janrlarni yuklashda xato:  $error",
           onRetry: widget.onRetry,
         ),
       );
@@ -1756,7 +1782,7 @@ class _GenresSectionState extends State<GenresSection> {
                     )) {
                       _showErrorDialog(
                         context,
-                        'Tarmoq aloqasi yo\'q. Iltimos, internet aloqasini tekshiring.',
+                        'Tarmoq aloqasi yo\'q.  Iltimos, internet aloqasini tekshiring.',
                       );
                     } else {
                       Navigator.push(
@@ -1792,7 +1818,7 @@ class _GenresSectionState extends State<GenresSection> {
   }
 }
 
-// Janr kartasini film kartasi dizaynida ko'rsatish uchun yangi widget
+// Genre Film Style Card
 class GenreFilmStyleCard extends StatelessWidget {
   final Map<String, dynamic> genre;
   final double itemWidth;
@@ -1987,7 +2013,7 @@ class CategoriesSection extends StatelessWidget {
   }
 }
 
-// Category Section - Improved with scroll handling
+// Category Section
 class CategorySection extends StatefulWidget {
   final dynamic category;
   final List<dynamic> films;
@@ -2277,111 +2303,7 @@ class FilmItem extends StatelessWidget {
   }
 }
 
-// GenreCard (kept for backward compatibility; not used in new layout)
-class GenreCard extends StatelessWidget {
-  final Map<String, dynamic> genre;
-  final VoidCallback onTap;
-  final bool isSelected;
-
-  const GenreCard({
-    super.key,
-    required this.genre,
-    required this.onTap,
-    this.isSelected = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final imageUrl =
-        genre['photo'] != null
-            ? (genre['photo']['thumbnails'] != null &&
-                    genre['photo']['thumbnails']['small'] != null &&
-                    genre['photo']['thumbnails']['small']['src'] != null
-                ? genre['photo']['thumbnails']['small']['src']
-                : genre['photo']['link'] ?? 'https://placehold.co/350x250')
-            : 'https://placehold.co/350x250';
-    final name = genre['name_uz'] ?? 'Noma’lum';
-
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        transform:
-            isSelected ? (Matrix4.identity()..scale(1.05)) : Matrix4.identity(),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.4),
-              blurRadius: 15,
-              spreadRadius: 2,
-              offset: const Offset(0, 8),
-            ),
-          ],
-          border:
-              isSelected ? Border.all(color: Colors.yellow, width: 3) : null,
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: Stack(
-            children: [
-              CachedNetworkImage(
-                imageUrl: imageUrl,
-                width: 350,
-                height: 250,
-                fit: BoxFit.cover,
-                cacheManager: customCacheManager,
-                placeholder:
-                    (context, url) =>
-                        const Center(child: CircularProgressIndicator()),
-                errorWidget:
-                    (context, url, error) => Container(
-                      width: 350,
-                      height: 250,
-                      color: Colors.grey[300],
-                      child: const Center(
-                        child: Text(
-                          'Rasmni yuklashda xato',
-                          style: TextStyle(color: Colors.grey, fontSize: 18),
-                        ),
-                      ),
-                    ),
-              ),
-              Container(
-                width: 350,
-                height: 250,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Colors.transparent, Colors.black.withOpacity(0.5)],
-                    stops: const [0.7, 1.0],
-                  ),
-                ),
-              ),
-              Positioned(
-                bottom: 16,
-                left: 24,
-                child: Text(
-                  name,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// View All Card - navigates to full content screen
+// View All Card
 class ViewAllCard extends StatelessWidget {
   final double width;
   final double height;

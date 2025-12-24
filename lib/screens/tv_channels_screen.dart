@@ -1,7 +1,7 @@
 import 'dart:convert';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:better_player/better_player.dart';
 import 'package:android_intent_plus/android_intent.dart';
@@ -33,7 +33,6 @@ final dataCacheManager = CacheManager(
 class TVChannelsScreen extends StatefulWidget {
   const TVChannelsScreen({super.key, this.focusNode});
 
-  /// Agar parent fokusni nazorat qilmoqchi bo‘lsa, shu yerga uzatadi.
   final FocusNode? focusNode;
 
   @override
@@ -85,10 +84,10 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
         .clamp(0, _sources.length - 1);
     _loadTVData();
 
-    // Request focus when the screen is built
+    // Focus'ni zamonaviy usulda so'rash
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        _mainFocusNode.requestFocus();
+        _requestFocusSafely();
       }
     });
   }
@@ -96,10 +95,9 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
   @override
   void didUpdateWidget(TVChannelsScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Request focus when widget updates (e.g., when navigating back to this screen)
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && !_mainFocusNode.hasFocus) {
-        _mainFocusNode.requestFocus();
+      if (mounted) {
+        _requestFocusSafely();
       }
     });
   }
@@ -107,12 +105,19 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Request focus when the screen becomes visible in the IndexedStack
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && !_mainFocusNode.hasFocus) {
-        _mainFocusNode.requestFocus();
+      if (mounted) {
+        _requestFocusSafely();
       }
     });
+  }
+
+  // ✅ Xavfsiz focus so'rash
+  void _requestFocusSafely() {
+    if (!_mainFocusNode.hasFocus && ModalRoute.of(context)?.isCurrent == true) {
+      _mainFocusNode.requestFocus();
+      debugPrint('🎯 TV Channels:  Focus requested');
+    }
   }
 
   @override
@@ -123,7 +128,6 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
       _mainFocusNode.dispose();
     }
 
-    // Revert orientation & system UI for the rest of the app
     SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
@@ -164,7 +168,7 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
       });
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _mainFocusNode.requestFocus();
+        if (mounted) _requestFocusSafely();
       });
 
       _precacheImages();
@@ -276,62 +280,17 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
       return;
     }
 
-    final selectedPlayer = await showDialog<String>(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            title: const Text(
-              "Pleerni tanlang",
-              style: TextStyle(fontSize: 24, color: Colors.white),
-            ),
-            backgroundColor: Colors.black.withOpacity(0.9),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildPlayerOption(
-                    context,
-                    icon: Icons.play_circle_filled,
-                    text: "Ichki pleer: Better Player",
-                    value: 'better_player',
-                  ),
-                  _buildPlayerOption(
-                    context,
-                    icon: Icons.video_library,
-                    text: "Tashqi pleer bilan ochish",
-                    value: 'external',
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                style: TextButton.styleFrom(
-                  backgroundColor: Colors.grey[800],
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 32,
-                    vertical: 16,
-                  ),
-                ),
-                child: const Text(
-                  "Bekor qilish",
-                  style: TextStyle(fontSize: 20, color: Colors.white),
-                ),
-              ),
-            ],
-          ),
-    );
-
-    if (selectedPlayer == null) return;
+    final selectedPlayer = await _showPlayerSelectionDialog();
+    if (selectedPlayer == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _requestFocusSafely();
+      });
+      return;
+    }
 
     if (selectedPlayer == 'better_player') {
       if (mounted) {
-        Navigator.push(
+        await Navigator.push(
           context,
           createSlideRoute(
             VideoPlayerScreen(
@@ -365,6 +324,7 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
             ),
           ),
         );
+        if (mounted) _requestFocusSafely();
       }
     } else if (selectedPlayer == 'external') {
       try {
@@ -377,103 +337,120 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
       } catch (e) {
         if (mounted) _showErrorDialog("Tashqi pleerni ochishda xato: $e");
       }
+      if (mounted) _requestFocusSafely();
     }
   }
 
-  Widget _buildPlayerOption(
-    BuildContext context, {
-    required IconData icon,
-    required String text,
-    required String value,
-  }) {
-    return GestureDetector(
-      onTap: () => Navigator.pop(context, value),
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 8.0),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        decoration: BoxDecoration(
-          color: Colors.grey[800],
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 32, color: Colors.white),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                text,
-                style: const TextStyle(fontSize: 20, color: Colors.white),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      ),
+  Future<String?> _showPlayerSelectionDialog() async {
+    return await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (dialogContext) => _PlayerSelectionDialog(
+            onSelected: (value) => Navigator.pop(dialogContext, value),
+            onCancel: () => Navigator.pop(dialogContext),
+          ),
     );
   }
 
+  void _showErrorDialog(String message) {
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder:
+            (dialogContext) => _ErrorDialog(
+              message: message,
+              onOk: () => Navigator.pop(dialogContext),
+              onRetry: () {
+                Navigator.pop(dialogContext);
+                _refresh();
+              },
+            ),
+      );
+    }
+  }
+
   // ---------- Focus & navigation ----------
-  void _handleKeyEvent(RawKeyEvent event) {
-    if (event is! RawKeyDownEvent) return;
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) {
+      return KeyEventResult.ignored;
+    }
 
     final key = event.logicalKey;
 
-    // Back: kengaytirilgan qo'llab-quvvatlash
-    if (key == LogicalKeyboardKey.escape ||
-        key == LogicalKeyboardKey.goBack ||
-        key == LogicalKeyboardKey.backspace ||
-        key == LogicalKeyboardKey.browserBack) {
+    if (_isBackKey(key)) {
       Navigator.pop(context);
-      return;
+      return KeyEventResult.handled;
+    }
+
+    if (key == LogicalKeyboardKey.contextMenu || key == LogicalKeyboardKey.f1) {
+      setState(() => _focusArea = _FocusArea.sources);
+      return KeyEventResult.handled;
     }
 
     final currentChannels = _currentChannels();
     final isGridEmpty = currentChannels.isEmpty;
 
+    bool handled = false;
     setState(() {
       switch (_focusArea) {
         case _FocusArea.sources:
-          _handleSourcesNavigation(key);
+          handled = _handleSourcesNavigation(key);
           break;
         case _FocusArea.categories:
-          _handleCategoriesNavigation(key);
+          handled = _handleCategoriesNavigation(key);
           break;
         case _FocusArea.grid:
           if (isGridEmpty) {
-            // Bo'sh holatda yuqoriga qaytish va kategoriyaga/source'ga o'tish
             if (key == LogicalKeyboardKey.arrowUp) {
               _focusArea =
                   categories.isNotEmpty
                       ? _FocusArea.categories
                       : _FocusArea.sources;
+              handled = true;
             }
           } else {
-            _handleGridNavigation(key, currentChannels);
+            handled = _handleGridNavigation(key, currentChannels);
           }
           break;
       }
     });
+
+    return handled ? KeyEventResult.handled : KeyEventResult.ignored;
   }
 
-  void _handleSourcesNavigation(LogicalKeyboardKey key) {
+  bool _isBackKey(LogicalKeyboardKey key) {
+    return key == LogicalKeyboardKey.escape ||
+        key == LogicalKeyboardKey.goBack ||
+        key == LogicalKeyboardKey.backspace ||
+        key == LogicalKeyboardKey.browserBack;
+  }
+
+  bool _handleSourcesNavigation(LogicalKeyboardKey key) {
     if (key == LogicalKeyboardKey.arrowLeft && _selectedSourceIndex > 0) {
       _selectedSourceIndex--;
+      return true;
     } else if (key == LogicalKeyboardKey.arrowRight &&
         _selectedSourceIndex < _sources.length - 1) {
       _selectedSourceIndex++;
+      return true;
     } else if (key == LogicalKeyboardKey.arrowDown) {
       _focusArea =
           categories.isNotEmpty ? _FocusArea.categories : _FocusArea.grid;
+      return true;
     } else if (key == LogicalKeyboardKey.enter ||
         key == LogicalKeyboardKey.select) {
       final newSource = _sources[_selectedSourceIndex];
       if (newSource != selectedSource) {
         _onSourceChanged(newSource);
       }
+      return true;
     }
+    return false;
   }
 
-  void _handleCategoriesNavigation(LogicalKeyboardKey key) {
+  bool _handleCategoriesNavigation(LogicalKeyboardKey key) {
     final maxIndex = categories.length;
 
     if (key == LogicalKeyboardKey.arrowLeft && _selectedCategoryIndex > 0) {
@@ -481,22 +458,27 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
       _selectedChannelIndex = 0;
       _scrollCategoryIntoView();
       _resetGridScroll();
+      return true;
     } else if (key == LogicalKeyboardKey.arrowRight &&
         _selectedCategoryIndex < maxIndex) {
       _selectedCategoryIndex++;
       _selectedChannelIndex = 0;
       _scrollCategoryIntoView();
       _resetGridScroll();
+      return true;
     } else if (key == LogicalKeyboardKey.arrowUp) {
       _focusArea = _FocusArea.sources;
+      return true;
     } else if (key == LogicalKeyboardKey.arrowDown ||
         key == LogicalKeyboardKey.enter ||
         key == LogicalKeyboardKey.select) {
       _focusArea = _FocusArea.grid;
+      return true;
     }
+    return false;
   }
 
-  void _handleGridNavigation(
+  bool _handleGridNavigation(
     LogicalKeyboardKey key,
     List<dynamic> currentChannels,
   ) {
@@ -506,24 +488,29 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
         _selectedChannelIndex < lastIndex) {
       _selectedChannelIndex++;
       _scrollToChannelIndex();
+      return true;
     } else if (key == LogicalKeyboardKey.arrowLeft &&
         _selectedChannelIndex > 0) {
       _selectedChannelIndex--;
       _scrollToChannelIndex();
+      return true;
     } else if (key == LogicalKeyboardKey.arrowDown) {
       final nextIndex = _selectedChannelIndex + _rowSize;
       if (nextIndex <= lastIndex) {
         _selectedChannelIndex = nextIndex;
         _scrollToChannelIndex(force: true);
+        return true;
       }
     } else if (key == LogicalKeyboardKey.arrowUp) {
       final prevIndex = _selectedChannelIndex - _rowSize;
       if (prevIndex >= 0) {
         _selectedChannelIndex = prevIndex;
         _scrollToChannelIndex(force: true);
+        return true;
       } else {
         _focusArea =
             categories.isNotEmpty ? _FocusArea.categories : _FocusArea.sources;
+        return true;
       }
     } else if (key == LogicalKeyboardKey.enter ||
         key == LogicalKeyboardKey.select) {
@@ -535,9 +522,12 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
         channel['title_uz'],
         selectedSource,
       );
+      return true;
     } else if (key == LogicalKeyboardKey.keyR) {
       _refresh();
+      return true;
     }
+    return false;
   }
 
   void _scrollToChannelIndex({bool force = false}) {
@@ -617,62 +607,6 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
     }
   }
 
-  void _showErrorDialog(String message) {
-    if (mounted) {
-      showDialog(
-        context: context,
-        builder:
-            (context) => AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              title: const Text(
-                "Xato",
-                style: TextStyle(fontSize: 24, color: Colors.white),
-              ),
-              content: Text(
-                message,
-                style: const TextStyle(fontSize: 20, color: Colors.white),
-              ),
-              backgroundColor: Colors.black.withOpacity(0.9),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: TextButton.styleFrom(
-                    backgroundColor: Colors.grey[800],
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 16,
-                    ),
-                  ),
-                  child: const Text(
-                    "OK",
-                    style: TextStyle(fontSize: 20, color: Colors.white),
-                  ),
-                ),
-                TextButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _refresh();
-                  },
-                  style: TextButton.styleFrom(
-                    backgroundColor: kPinkColor,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 16,
-                    ),
-                  ),
-                  child: const Text(
-                    "Qayta urinish",
-                    style: TextStyle(fontSize: 20, color: Colors.white),
-                  ),
-                ),
-              ],
-            ),
-      );
-    }
-  }
-
   List<dynamic> _currentChannels() {
     final key =
         _selectedCategoryIndex == 0
@@ -680,8 +614,6 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
             : categories[_selectedCategoryIndex - 1]['id'];
     return channelsByCategory[key] ?? [];
   }
-
-  int _currentChannelCount() => _currentChannels().length;
 
   // ---------- UI ----------
   Widget _buildSourceRow() {
@@ -965,17 +897,17 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
   // ---------- Build ----------
   @override
   Widget build(BuildContext context) {
-    return RawKeyboardListener(
+    // ✅ O'ZGARTIRISH 1: autofocus = false (parent nazorat qiladi)
+    return Focus(
       focusNode: _mainFocusNode,
-      autofocus: true,
-      onKey: _handleKeyEvent,
+      autofocus: false, // ✅ Parent'dan focus keladi
+      onKeyEvent: _handleKeyEvent,
       child: Scaffold(
         backgroundColor: Colors.black,
         body: SafeArea(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header row with reload button for TV (remote-friendly)
               Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 24,
@@ -995,24 +927,249 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
               const SizedBox(height: 8),
               if (categories.isNotEmpty) _buildCategoriesRow(),
               const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                child: Text(
-                  "Kanallar: ${_currentChannelCount()}",
-                  style: const TextStyle(fontSize: 18, color: Colors.white70),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: RefreshIndicator(
-                  onRefresh: _refresh,
-                  color: kPinkColor,
-                  child: _buildChannelGrid(),
-                ),
-              ),
+              Expanded(child: _buildChannelGrid()),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ✅ Dialog widget'lari (o'zgarishsiz)
+class _PlayerSelectionDialog extends StatefulWidget {
+  final Function(String) onSelected;
+  final VoidCallback onCancel;
+
+  const _PlayerSelectionDialog({
+    required this.onSelected,
+    required this.onCancel,
+  });
+
+  @override
+  State<_PlayerSelectionDialog> createState() => _PlayerSelectionDialogState();
+}
+
+class _PlayerSelectionDialogState extends State<_PlayerSelectionDialog> {
+  int _selectedIndex = 0;
+  final FocusNode _dialogFocusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _dialogFocusNode.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _dialogFocusNode.dispose();
+    super.dispose();
+  }
+
+  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+    final key = event.logicalKey;
+
+    if (key == LogicalKeyboardKey.arrowDown && _selectedIndex < 1) {
+      setState(() => _selectedIndex++);
+      return KeyEventResult.handled;
+    } else if (key == LogicalKeyboardKey.arrowUp && _selectedIndex > 0) {
+      setState(() => _selectedIndex--);
+      return KeyEventResult.handled;
+    } else if (key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.select) {
+      if (_selectedIndex == 0) {
+        widget.onSelected('better_player');
+      } else {
+        widget.onSelected('external');
+      }
+      return KeyEventResult.handled;
+    } else if (key == LogicalKeyboardKey.escape ||
+        key == LogicalKeyboardKey.goBack) {
+      widget.onCancel();
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Focus(
+      focusNode: _dialogFocusNode,
+      autofocus: true,
+      onKeyEvent: _handleKey,
+      child: AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          "Pleerni tanlang",
+          style: TextStyle(fontSize: 24, color: Colors.white),
+        ),
+        backgroundColor: Colors.black.withOpacity(0.9),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildOption(
+                0,
+                Icons.play_circle_filled,
+                "Ichki pleer:  Better Player",
+              ),
+              _buildOption(1, Icons.video_library, "Tashqi pleer bilan ochish"),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: widget.onCancel,
+            style: TextButton.styleFrom(
+              backgroundColor: Colors.grey[800],
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+            ),
+            child: const Text(
+              "Bekor qilish",
+              style: TextStyle(fontSize: 20, color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOption(int index, IconData icon, String text) {
+    final isSelected = _selectedIndex == index;
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8.0),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      decoration: BoxDecoration(
+        color: isSelected ? kPinkColor : Colors.grey[800],
+        borderRadius: BorderRadius.circular(12),
+        border: isSelected ? Border.all(color: Colors.white, width: 2) : null,
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 32, color: Colors.white),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 20, color: Colors.white),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ErrorDialog extends StatefulWidget {
+  final String message;
+  final VoidCallback onOk;
+  final VoidCallback onRetry;
+
+  const _ErrorDialog({
+    required this.message,
+    required this.onOk,
+    required this.onRetry,
+  });
+
+  @override
+  State<_ErrorDialog> createState() => _ErrorDialogState();
+}
+
+class _ErrorDialogState extends State<_ErrorDialog> {
+  int _selectedButton = 0;
+  final FocusNode _dialogFocusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _dialogFocusNode.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _dialogFocusNode.dispose();
+    super.dispose();
+  }
+
+  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+    final key = event.logicalKey;
+
+    if (key == LogicalKeyboardKey.arrowLeft && _selectedButton > 0) {
+      setState(() => _selectedButton--);
+      return KeyEventResult.handled;
+    } else if (key == LogicalKeyboardKey.arrowRight && _selectedButton < 1) {
+      setState(() => _selectedButton++);
+      return KeyEventResult.handled;
+    } else if (key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.select) {
+      if (_selectedButton == 0) {
+        widget.onOk();
+      } else {
+        widget.onRetry();
+      }
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Focus(
+      focusNode: _dialogFocusNode,
+      autofocus: true,
+      onKeyEvent: _handleKey,
+      child: AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          "Xato",
+          style: TextStyle(fontSize: 24, color: Colors.white),
+        ),
+        content: Text(
+          widget.message,
+          style: const TextStyle(fontSize: 20, color: Colors.white),
+        ),
+        backgroundColor: Colors.black.withOpacity(0.9),
+        actions: [
+          TextButton(
+            onPressed: widget.onOk,
+            style: TextButton.styleFrom(
+              backgroundColor:
+                  _selectedButton == 0 ? Colors.white : Colors.grey[800],
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+            ),
+            child: Text(
+              "OK",
+              style: TextStyle(
+                fontSize: 20,
+                color: _selectedButton == 0 ? Colors.black : Colors.white,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: widget.onRetry,
+            style: TextButton.styleFrom(
+              backgroundColor:
+                  _selectedButton == 1 ? kPinkColor : Colors.grey[800],
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+            ),
+            child: const Text(
+              "Qayta urinish",
+              style: TextStyle(fontSize: 20, color: Colors.white),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -3,9 +3,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:tplaytv/screens/auth_screen.dart';
 import 'package:tplaytv/screens/index_screen.dart';
 import 'package:tplaytv/screens/tv_channels_screen.dart';
+import 'package:tplaytv/screens/catalog_screen.dart';
+import 'package:tplaytv/screens/favorites_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 
+// Route observer for restoring focus when returning to this screen.
 final RouteObserver<PageRoute<dynamic>> routeObserver =
     RouteObserver<PageRoute<dynamic>>();
 
@@ -93,9 +96,12 @@ class _MainScreenState extends State<MainScreen>
   int _selectedIndex = 0;
   bool _isSidebarExpanded = false;
 
-  // ✅ Oddiy screen ro'yxati - focusNode UZATILMAYDI
-  // Screen'lar o'zlari internal focus node yaratadi
-  final List<Widget> _screens = const [IndexScreen(), TVChannelsScreen()];
+  final List<Widget> _screens = const [
+    IndexScreen(),
+    TVChannelsScreen(),
+    CatalogScreen(),
+    FavoritesScreen(),
+  ];
 
   final List<Map<String, dynamic>> _menuItems = [
     {
@@ -123,7 +129,7 @@ class _MainScreenState extends State<MainScreen>
 
   FocusNode? _lastFocusedContentNode;
 
-  // Exit menu
+  // Exit menu (right-side)
   bool _isExitMenuOpen = false;
   int _exitSelectedIndex = 0;
   late AnimationController _exitMenuController;
@@ -210,6 +216,7 @@ class _MainScreenState extends State<MainScreen>
         _sidebarFocusNode.requestFocus();
       } else {
         _expandController.reverse();
+        // Delay unfocus to allow KeyUp event to be processed first
         Future.microtask(() {
           _sidebarFocusNode.unfocus();
           _restoreLastContentFocus();
@@ -239,6 +246,7 @@ class _MainScreenState extends State<MainScreen>
   }
 
   KeyEventResult _handleSidebarKeyEvent(FocusNode node, KeyEvent event) {
+    // Accept all event types including KeyUpEvent
     if (event is! KeyDownEvent &&
         event is! KeyRepeatEvent &&
         event is! KeyUpEvent) {
@@ -247,7 +255,9 @@ class _MainScreenState extends State<MainScreen>
 
     final key = event.logicalKey;
 
+    // Back buttons work in any event type to block system handler
     if (_isBackKey(key)) {
+      // Only close on KeyDown/KeyRepeat, but handle all types to prevent propagation
       if ((event is KeyDownEvent || event is KeyRepeatEvent) &&
           _isSidebarExpanded) {
         _toggleSidebar();
@@ -255,6 +265,7 @@ class _MainScreenState extends State<MainScreen>
       return KeyEventResult.handled;
     }
 
+    // Other keys only work on KeyDown and KeyRepeat
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
@@ -278,37 +289,16 @@ class _MainScreenState extends State<MainScreen>
       _toggleSidebar();
       return KeyEventResult.handled;
     }
-
     if (key == LogicalKeyboardKey.arrowLeft) {
       return KeyEventResult.handled;
     }
 
     if (key == LogicalKeyboardKey.select || key == LogicalKeyboardKey.enter) {
-      _onMenuItemSelected(_selectedIndex);
+      _toggleSidebar();
       return KeyEventResult.handled;
     }
 
     return KeyEventResult.ignored;
-  }
-
-  void _onMenuItemSelected(int index) {
-    // Catalog va Favorites vaqtincha disabled (index 2 va 3)
-    if (index > 1) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Bu sahifa hozircha mavjud emas'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-      }
-      return;
-    }
-
-    setState(() {
-      _selectedIndex = index;
-    });
-    _toggleSidebar();
   }
 
   Future<bool> _onWillPop() async {
@@ -369,6 +359,7 @@ class _MainScreenState extends State<MainScreen>
   }
 
   KeyEventResult _handleExitMenuKeyEvent(FocusNode node, KeyEvent event) {
+    // Barcha event turlarini qabul qilamiz
     if (event is! KeyDownEvent &&
         event is! KeyRepeatEvent &&
         event is! KeyUpEvent) {
@@ -377,17 +368,20 @@ class _MainScreenState extends State<MainScreen>
 
     final key = event.logicalKey;
 
+    // Back tugmalari uchun - har qanday event turida ishlaydi
     if (_isBackKey(key)) {
-      _ignoreNextWillPop = true;
+      _ignoreNextWillPop = true; // WillPopScope qayta ochmasin
       _closeExitMenu();
       return KeyEventResult.handled;
     }
 
+    // Left arrow ham exit menuni yopadi
     if (key == LogicalKeyboardKey.arrowLeft) {
       _closeExitMenu();
       return KeyEventResult.handled;
     }
 
+    // Qolgan tugmalar faqat KeyDown va KeyRepeat da ishlaydi
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
@@ -405,6 +399,7 @@ class _MainScreenState extends State<MainScreen>
       return KeyEventResult.handled;
     }
 
+    // Right does nothing
     if (key == LogicalKeyboardKey.arrowRight) {
       return KeyEventResult.handled;
     }
@@ -508,7 +503,7 @@ class _MainScreenState extends State<MainScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Ilovadan chiqasizmi? ',
+                            'Ilovadan chiqasizmi?',
                             style: GoogleFonts.roboto(
                               color: Colors.white,
                               fontSize: 18,
@@ -556,7 +551,7 @@ class _MainScreenState extends State<MainScreen>
         backgroundColor: const Color(0xFF0F0F0F),
         body: Stack(
           children: [
-            // ✅ Main content - main. dart.bak dagi kabi
+            // Main content
             FocusTraversalGroup(
               policy: ReadingOrderTraversalPolicy(),
               child: Focus(
@@ -591,7 +586,7 @@ class _MainScreenState extends State<MainScreen>
                       onKeyEvent: _handleSidebarKeyEvent,
                       child: Column(
                         children: [
-                          // Logo
+                          // Logo section
                           Container(
                             height: 64,
                             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -629,6 +624,7 @@ class _MainScreenState extends State<MainScreen>
                             ),
                           ),
 
+                          // Divider
                           Container(
                             height: 1,
                             color: Colors.white.withOpacity(0.1),
@@ -669,7 +665,11 @@ class _MainScreenState extends State<MainScreen>
                                       highlightColor: Colors.white.withOpacity(
                                         0.08,
                                       ),
-                                      onTap: () => _onMenuItemSelected(index),
+                                      onTap: () {
+                                        setState(() {
+                                          _selectedIndex = index;
+                                        });
+                                      },
                                       borderRadius: BorderRadius.circular(8),
                                       child: Container(
                                         height: 56,
@@ -713,7 +713,7 @@ class _MainScreenState extends State<MainScreen>
                             ),
                           ),
 
-                          // Settings
+                          // Settings at bottom
                           Container(
                             margin: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
@@ -771,7 +771,7 @@ class _MainScreenState extends State<MainScreen>
               },
             ),
 
-            // Exit menu
+            // Exit confirmation overlay (right sidebar)
             _buildExitMenuOverlay(),
           ],
         ),
