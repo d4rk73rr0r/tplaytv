@@ -90,12 +90,17 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen>
     with TickerProviderStateMixin, RouteAware {
+  static const int _indexScreenIndex = 0;
+  static const int _tvChannelsScreenIndex = 1;
+  
   int _selectedIndex = 0;
   bool _isSidebarExpanded = false;
 
-  // ✅ Oddiy screen ro'yxati - focusNode UZATILMAYDI
-  // Screen'lar o'zlari internal focus node yaratadi
-  final List<Widget> _screens = const [IndexScreen(), TVChannelsScreen()];
+  // ✅ Create the screens with keys so we can access them
+  final GlobalKey<IndexScreenContentState> _indexScreenKey = GlobalKey();
+  final GlobalKey<TVChannelsScreenState> _tvChannelsScreenKey = GlobalKey();
+  
+  late final List<Widget> _screens;
 
   final List<Map<String, dynamic>> _menuItems = [
     {
@@ -135,6 +140,13 @@ class _MainScreenState extends State<MainScreen>
   @override
   void initState() {
     super.initState();
+    
+    // Initialize screens with keys
+    _screens = [
+      IndexScreen(key: _indexScreenKey),
+      TVChannelsScreen(key: _tvChannelsScreenKey),
+    ];
+    
     _expandController = AnimationController(
       duration: const Duration(milliseconds: 200),
       vsync: this,
@@ -191,14 +203,34 @@ class _MainScreenState extends State<MainScreen>
   void _restoreLastContentFocus() {
     Future.microtask(() {
       if (!mounted) return;
-      if (_lastFocusedContentNode != null &&
-          _lastFocusedContentNode!.context != null &&
-          _lastFocusedContentNode!.canRequestFocus) {
-        _lastFocusedContentNode!.requestFocus();
+      
+      // If we changed screens or don't have a saved focus node, request focus on the current screen
+      if (_lastFocusedContentNode == null ||
+          !_lastFocusedContentNode!.canRequestFocus) {
+        _requestFocusOnCurrentScreen();
       } else {
-        _contentFocusNode.requestFocus();
+        // Otherwise, try to restore the saved focus node
+        _lastFocusedContentNode!.requestFocus();
+        debugPrint('🎯 Main: Restored focus to saved node');
       }
     });
+  }
+  
+  void _requestFocusOnCurrentScreen() {
+    debugPrint('🎯 Main: Requesting focus on screen index $_selectedIndex');
+    
+    // Request focus on the appropriate screen
+    if (_selectedIndex == _indexScreenIndex && _indexScreenKey.currentState != null) {
+      _indexScreenKey.currentState!.requestFocus();
+      debugPrint('🎯 Main: Requested focus on IndexScreen');
+    } else if (_selectedIndex == _tvChannelsScreenIndex && _tvChannelsScreenKey.currentState != null) {
+      _tvChannelsScreenKey.currentState!.requestFocus();
+      debugPrint('🎯 Main: Requested focus on TVChannelsScreen');
+    } else {
+      // Fallback: request focus on the content node
+      _contentFocusNode.requestFocus();
+      debugPrint('🎯 Main: Fallback - requested focus on content node');
+    }
   }
 
   void _toggleSidebar() {
@@ -306,6 +338,11 @@ class _MainScreenState extends State<MainScreen>
     }
 
     setState(() {
+      // If we're changing screens, clear the last focused node
+      // so we don't try to restore focus to the wrong screen
+      if (_selectedIndex != index) {
+        _lastFocusedContentNode = null;
+      }
       _selectedIndex = index;
     });
     _toggleSidebar();

@@ -36,10 +36,10 @@ class TVChannelsScreen extends StatefulWidget {
   final FocusNode? focusNode;
 
   @override
-  State<TVChannelsScreen> createState() => _TVChannelsScreenState();
+  State<TVChannelsScreen> createState() => TVChannelsScreenState();
 }
 
-class _TVChannelsScreenState extends State<TVChannelsScreen> {
+class TVChannelsScreenState extends State<TVChannelsScreen> {
   // Data
   List<dynamic> categories = [];
   Map<String, List<dynamic>> channelsByCategory = {};
@@ -112,12 +112,19 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
     });
   }
 
-  // ✅ Xavfsiz focus so'rash
-  void _requestFocusSafely() {
+  /// Requests focus on this screen's main focus node.
+  /// 
+  /// Call this when the screen becomes visible (e.g., after switching from another screen)
+  /// to ensure keyboard/remote navigation works properly.
+  void requestFocus() {
     if (!_mainFocusNode.hasFocus && ModalRoute.of(context)?.isCurrent == true) {
       _mainFocusNode.requestFocus();
-      debugPrint('🎯 TV Channels:  Focus requested');
+      debugPrint('🎯 TV Channels: Focus requested');
     }
+  }
+  
+  void _requestFocusSafely() {
+    requestFocus();
   }
 
   @override
@@ -281,10 +288,12 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
     }
 
     final selectedPlayer = await _showPlayerSelectionDialog();
+    
+    // Restore focus after dialog closes, but before opening player
+    // (player screen will handle its own focus)
+    if (mounted) _requestFocusSafely();
+    
     if (selectedPlayer == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _requestFocusSafely();
-      });
       return;
     }
 
@@ -324,6 +333,7 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
             ),
           ),
         );
+        // Restore focus again after returning from player
         if (mounted) _requestFocusSafely();
       }
     } else if (selectedPlayer == 'external') {
@@ -337,7 +347,6 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
       } catch (e) {
         if (mounted) _showErrorDialog("Tashqi pleerni ochishda xato: $e");
       }
-      if (mounted) _requestFocusSafely();
     }
   }
 
@@ -345,6 +354,9 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
     return await showDialog<String>(
       context: context,
       barrierDismissible: false,
+      // Use local navigator to keep dialog within this screen's context
+      // and prevent main screen's WillPopScope from intercepting events
+      useRootNavigator: false,
       builder:
           (dialogContext) => _PlayerSelectionDialog(
             onSelected: (value) => Navigator.pop(dialogContext, value),
@@ -358,6 +370,9 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
       showDialog(
         context: context,
         barrierDismissible: false,
+        // Use local navigator to keep dialog within this screen's context
+        // and prevent main screen's WillPopScope from intercepting events
+        useRootNavigator: false,
         builder:
             (dialogContext) => _ErrorDialog(
               message: message,
@@ -424,7 +439,8 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
     return key == LogicalKeyboardKey.escape ||
         key == LogicalKeyboardKey.goBack ||
         key == LogicalKeyboardKey.backspace ||
-        key == LogicalKeyboardKey.browserBack;
+        key == LogicalKeyboardKey.browserBack ||
+        key == LogicalKeyboardKey.gameButtonB;
   }
 
   bool _handleSourcesNavigation(LogicalKeyboardKey key) {
@@ -951,6 +967,11 @@ class _PlayerSelectionDialog extends StatefulWidget {
 }
 
 class _PlayerSelectionDialogState extends State<_PlayerSelectionDialog> {
+  static const int _internalPlayerIndex = 0;
+  static const int _externalPlayerIndex = 1;
+  static const int _cancelIndex = 2;
+  static const int _maxOptionIndex = 2;
+  
   int _selectedIndex = 0;
   final FocusNode _dialogFocusNode = FocusNode();
 
@@ -973,22 +994,34 @@ class _PlayerSelectionDialogState extends State<_PlayerSelectionDialog> {
 
     final key = event.logicalKey;
 
-    if (key == LogicalKeyboardKey.arrowDown && _selectedIndex < 1) {
+    // Down arrow: move to next option
+    if (key == LogicalKeyboardKey.arrowDown && _selectedIndex < _maxOptionIndex) {
       setState(() => _selectedIndex++);
       return KeyEventResult.handled;
-    } else if (key == LogicalKeyboardKey.arrowUp && _selectedIndex > 0) {
+    } 
+    // Up arrow: move to previous option
+    else if (key == LogicalKeyboardKey.arrowUp && _selectedIndex > 0) {
       setState(() => _selectedIndex--);
       return KeyEventResult.handled;
-    } else if (key == LogicalKeyboardKey.enter ||
+    } 
+    // Enter/Select: activate selected option
+    else if (key == LogicalKeyboardKey.enter ||
         key == LogicalKeyboardKey.select) {
-      if (_selectedIndex == 0) {
+      if (_selectedIndex == _internalPlayerIndex) {
         widget.onSelected('better_player');
-      } else {
+      } else if (_selectedIndex == _externalPlayerIndex) {
         widget.onSelected('external');
+      } else if (_selectedIndex == _cancelIndex) {
+        widget.onCancel();
       }
       return KeyEventResult.handled;
-    } else if (key == LogicalKeyboardKey.escape ||
-        key == LogicalKeyboardKey.goBack) {
+    } 
+    // Back/Escape: cancel dialog - handle all possible back keys
+    else if (key == LogicalKeyboardKey.escape ||
+        key == LogicalKeyboardKey.goBack ||
+        key == LogicalKeyboardKey.backspace ||
+        key == LogicalKeyboardKey.browserBack ||
+        key == LogicalKeyboardKey.gameButtonB) {
       widget.onCancel();
       return KeyEventResult.handled;
     }
@@ -1015,27 +1048,15 @@ class _PlayerSelectionDialogState extends State<_PlayerSelectionDialog> {
             mainAxisSize: MainAxisSize.min,
             children: [
               _buildOption(
-                0,
+                _internalPlayerIndex,
                 Icons.play_circle_filled,
                 "Ichki pleer:  Better Player",
               ),
-              _buildOption(1, Icons.video_library, "Tashqi pleer bilan ochish"),
+              _buildOption(_externalPlayerIndex, Icons.video_library, "Tashqi pleer bilan ochish"),
+              _buildOption(_cancelIndex, Icons.close, "Bekor qilish"),
             ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: widget.onCancel,
-            style: TextButton.styleFrom(
-              backgroundColor: Colors.grey[800],
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-            ),
-            child: const Text(
-              "Bekor qilish",
-              style: TextStyle(fontSize: 20, color: Colors.white),
-            ),
-          ),
-        ],
       ),
     );
   }
