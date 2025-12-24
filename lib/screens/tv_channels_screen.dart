@@ -112,11 +112,14 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
     });
   }
 
-  // Safe focus request method
+  /// Requests focus on this screen's main focus node.
+  /// 
+  /// Call this when the screen becomes visible (e.g., after switching from another screen)
+  /// to ensure keyboard/remote navigation works properly.
   void requestFocus() {
     if (!_mainFocusNode.hasFocus && ModalRoute.of(context)?.isCurrent == true) {
       _mainFocusNode.requestFocus();
-      debugPrint('🎯 TV Channels:  Focus requested');
+      debugPrint('🎯 TV Channels: Focus requested');
     }
   }
   
@@ -351,7 +354,9 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
     return await showDialog<String>(
       context: context,
       barrierDismissible: false,
-      useRootNavigator: false, // Use local navigator to prevent WillPopScope interference
+      // Use local navigator to keep dialog within this screen's context
+      // and prevent main screen's WillPopScope from intercepting events
+      useRootNavigator: false,
       builder:
           (dialogContext) => _PlayerSelectionDialog(
             onSelected: (value) => Navigator.pop(dialogContext, value),
@@ -365,7 +370,9 @@ class _TVChannelsScreenState extends State<TVChannelsScreen> {
       showDialog(
         context: context,
         barrierDismissible: false,
-        useRootNavigator: false, // Use local navigator to prevent WillPopScope interference
+        // Use local navigator to keep dialog within this screen's context
+        // and prevent main screen's WillPopScope from intercepting events
+        useRootNavigator: false,
         builder:
             (dialogContext) => _ErrorDialog(
               message: message,

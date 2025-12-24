@@ -296,7 +296,10 @@ class _IndexScreenContentState extends State<IndexScreenContent> {
     });
   }
   
-  // Public method for external focus management
+  /// Requests focus on this screen's content area.
+  /// 
+  /// Call this when the screen becomes visible (e.g., after returning from another screen
+  /// or switching from sidebar) to ensure keyboard/remote navigation works properly.
   void requestFocus() {
     _requestContentFocus();
   }
