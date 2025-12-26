@@ -257,36 +257,41 @@ class IndexScreenContentState extends State<IndexScreenContent> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted &&
-          !_contentFocusNode.hasFocus &&
-          ModalRoute.of(context)?.isCurrent == true) {
-        _contentFocusNode.requestFocus();
-        debugPrint('🎯 IndexScreen: Focus requested (didChangeDependencies)');
-      }
-    });
+    // Only request focus during initial setup, not on every dependency change
+    // This prevents interference with focus restoration from parent
   }
 
   @override
   void didUpdateWidget(IndexScreenContent oldWidget) {
     super.didUpdateWidget(oldWidget);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted &&
-          !_contentFocusNode.hasFocus &&
-          ModalRoute.of(context)?.isCurrent == true) {
-        _contentFocusNode.requestFocus();
-        debugPrint('🎯 IndexScreen: Focus requested (didUpdateWidget)');
-      }
-    });
+    // Focus restoration is handled by parent's requestFocus() call
+    // Don't interfere with automatic restoration
   }
 
   void _requestContentFocus() {
-    Future.microtask(() {
-      if (mounted) {
+    debugPrint('🎯 IndexScreen: _requestContentFocus called');
+    // Use addPostFrameCallback to ensure widget tree is fully built
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        debugPrint('🎯 IndexScreen: Not mounted, skipping focus request');
+        return;
+      }
+      
+      if (_contentFocusNode.canRequestFocus) {
         _contentFocusNode.requestFocus();
         debugPrint(
-          '🎯 IndexScreen: Focus requested (hasFocus: ${_contentFocusNode.hasFocus})',
+          '🎯 IndexScreen: Focus requested (hasFocus: ${_contentFocusNode.hasFocus}, '
+          'canRequestFocus: ${_contentFocusNode.canRequestFocus})',
         );
+      } else {
+        debugPrint('🎯 IndexScreen: Focus node cannot request focus');
+        // Try again after a short delay
+        Future.delayed(const Duration(milliseconds: 50), () {
+          if (mounted && _contentFocusNode.canRequestFocus) {
+            _contentFocusNode.requestFocus();
+            debugPrint('🎯 IndexScreen: Retry focus request successful');
+          }
+        });
       }
     });
   }
@@ -701,7 +706,7 @@ class IndexScreenContentState extends State<IndexScreenContent> {
       return KeyEventResult.handled;
     }
 
-    // LEFT – faqat BANNERS chap chekkasida parentga uzatamiz
+    // LEFT – faqat chap chekkasida parentga uzatamiz
     if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
       if (_selectedItemIndex > 0) {
         setState(() {
@@ -711,19 +716,9 @@ class IndexScreenContentState extends State<IndexScreenContent> {
         return KeyEventResult.handled;
       }
 
-      // Bu yerga faqat _selectedItemIndex == 0 bo‘lganda tushamiz.
-      // Faqat banners bo‘limi (ekran chap chekkasi) bo‘lsa, parentga uzatamiz.
-      final bannersNotEmpty = provider.banners.isNotEmpty;
-      const bannerSectionIndex = 0; // banners bo‘lsa, har doim 0
-
-      if (bannersNotEmpty && _selectedSectionIndex == bannerSectionIndex) {
-        // Parentga forwarding – MainScreen arrowLeftni ko‘rib Sidebar ochadi.
-        return KeyEventResult.ignored;
-      }
-
-      // Boshqa bo‘limlarda chekkaga kelganda ham Sidebar ochilmasin:
-      // hech narsa qilmaymiz, lekin handled qaytaramiz.
-      return KeyEventResult.handled;
+      // Bu yerga faqat _selectedItemIndex == 0 bo'lganda tushamiz.
+      // Chap chekkada bo'lsak, parentga uzatamiz sidebar ochish uchun
+      return KeyEventResult.ignored;
     }
 
     // ENTER/SELECT
@@ -780,7 +775,11 @@ class IndexScreenContentState extends State<IndexScreenContent> {
 
   Future<void> _pushAndRefocus(Widget page) async {
     await Navigator.push(context, createSlideRoute(page));
-    _requestContentFocus();
+    // Add delay to ensure widget tree is stable before requesting focus
+    await Future.delayed(const Duration(milliseconds: 100));
+    if (mounted) {
+      _requestContentFocus();
+    }
   }
 
   void _activateSelectedItem(IndexScreenProvider provider) {
