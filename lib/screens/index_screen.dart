@@ -257,27 +257,15 @@ class IndexScreenContentState extends State<IndexScreenContent> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted &&
-          !_contentFocusNode.hasFocus &&
-          ModalRoute.of(context)?.isCurrent == true) {
-        _contentFocusNode.requestFocus();
-        debugPrint('🎯 IndexScreen: Focus requested (didChangeDependencies)');
-      }
-    });
+    // Only request focus during initial setup, not on every dependency change
+    // This prevents interference with focus restoration from parent
   }
 
   @override
   void didUpdateWidget(IndexScreenContent oldWidget) {
     super.didUpdateWidget(oldWidget);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted &&
-          !_contentFocusNode.hasFocus &&
-          ModalRoute.of(context)?.isCurrent == true) {
-        _contentFocusNode.requestFocus();
-        debugPrint('🎯 IndexScreen: Focus requested (didUpdateWidget)');
-      }
-    });
+    // Focus restoration is handled by parent's requestFocus() call
+    // Don't interfere with automatic restoration
   }
 
   void _requestContentFocus() {

@@ -199,7 +199,8 @@ class _MainScreenState extends State<MainScreen>
   }
 
   void _restoreLastContentFocus() {
-    Future.microtask(() {
+    // Wait for sidebar animation and widget tree to stabilize
+    Future.delayed(const Duration(milliseconds: 250), () {
       if (!mounted) return;
       _requestFocusOnCurrentScreen();
     });
@@ -208,7 +209,7 @@ class _MainScreenState extends State<MainScreen>
   void _requestFocusOnCurrentScreen() {
     debugPrint('🎯 Main: Requesting focus on screen index $_selectedIndex');
 
-    Future.delayed(const Duration(milliseconds: 100), () {
+    Future.delayed(const Duration(milliseconds: 150), () {
       if (!mounted) return;
 
       if (_selectedIndex == _indexScreenIndex &&
@@ -355,11 +356,8 @@ class _MainScreenState extends State<MainScreen>
     });
     _toggleSidebar();
 
-    Future.delayed(const Duration(milliseconds: 150), () {
-      if (mounted) {
-        _requestFocusOnCurrentScreen();
-      }
-    });
+    // Focus restoration is handled by _toggleSidebar -> _restoreLastContentFocus
+    // No need for additional delayed focus request here
   }
 
   Future<bool> _onWillPop() async {

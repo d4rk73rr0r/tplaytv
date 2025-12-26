@@ -94,21 +94,15 @@ class TVChannelsScreenState extends State<TVChannelsScreen> {
   @override
   void didUpdateWidget(TVChannelsScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _requestFocusSafely();
-      }
-    });
+    // Focus restoration is handled by parent's requestFocus() call
+    // Don't interfere with automatic restoration
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _requestFocusSafely();
-      }
-    });
+    // Only request focus during initial setup, not on every dependency change
+    // This prevents interference with focus restoration from parent
   }
 
   void requestFocus() {
