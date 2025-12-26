@@ -94,6 +94,7 @@ class _MainScreenState extends State<MainScreen>
   static const int _tvChannelsScreenIndex = 1;
 
   int _selectedIndex = 0;
+  int _sidebarHighlightedIndex = 0; // Separate index for sidebar menu highlight
   bool _isSidebarExpanded = false;
 
   // Index va TV sahifalar state’iga kirish uchun key’lar
@@ -232,6 +233,8 @@ class _MainScreenState extends State<MainScreen>
     setState(() {
       _isSidebarExpanded = !_isSidebarExpanded;
       if (_isSidebarExpanded) {
+        // Reset sidebar highlight to current screen when opening
+        _sidebarHighlightedIndex = _selectedIndex;
         _expandController.forward();
         _sidebarFocusNode.requestFocus();
       } else {
@@ -303,15 +306,15 @@ class _MainScreenState extends State<MainScreen>
 
     if (key == LogicalKeyboardKey.arrowDown) {
       setState(() {
-        _selectedIndex = (_selectedIndex + 1) % _menuItems.length;
+        _sidebarHighlightedIndex = (_sidebarHighlightedIndex + 1) % _menuItems.length;
       });
       return KeyEventResult.handled;
     }
 
     if (key == LogicalKeyboardKey.arrowUp) {
       setState(() {
-        _selectedIndex =
-            (_selectedIndex - 1 + _menuItems.length) % _menuItems.length;
+        _sidebarHighlightedIndex =
+            (_sidebarHighlightedIndex - 1 + _menuItems.length) % _menuItems.length;
       });
       return KeyEventResult.handled;
     }
@@ -326,7 +329,7 @@ class _MainScreenState extends State<MainScreen>
     }
 
     if (key == LogicalKeyboardKey.select || key == LogicalKeyboardKey.enter) {
-      _onMenuItemSelected(_selectedIndex);
+      _onMenuItemSelected(_sidebarHighlightedIndex);
       return KeyEventResult.handled;
     }
 
@@ -691,7 +694,8 @@ class _MainScreenState extends State<MainScreen>
                               itemCount: _menuItems.length,
                               itemBuilder: (context, index) {
                                 final item = _menuItems[index];
-                                final isSelected = _selectedIndex == index;
+                                final isCurrentScreen = _selectedIndex == index;
+                                final isHighlighted = _sidebarHighlightedIndex == index;
 
                                 return Container(
                                   margin: const EdgeInsets.symmetric(
@@ -700,10 +704,16 @@ class _MainScreenState extends State<MainScreen>
                                   ),
                                   decoration: BoxDecoration(
                                     color:
-                                        isSelected
+                                        isCurrentScreen
                                             ? Colors.white.withOpacity(0.15)
                                             : Colors.transparent,
                                     borderRadius: BorderRadius.circular(8),
+                                    border: isHighlighted
+                                        ? Border.all(
+                                          color: Colors.white.withOpacity(0.8),
+                                          width: 2,
+                                        )
+                                        : null,
                                   ),
                                   child: Material(
                                     color: Colors.transparent,
@@ -727,7 +737,7 @@ class _MainScreenState extends State<MainScreen>
                                         child: Row(
                                           children: [
                                             Icon(
-                                              isSelected
+                                              isCurrentScreen
                                                   ? item['activeIcon']
                                                   : item['icon'],
                                               color: Colors.white,
@@ -742,7 +752,7 @@ class _MainScreenState extends State<MainScreen>
                                                     color: Colors.white,
                                                     fontSize: 14,
                                                     fontWeight:
-                                                        isSelected
+                                                        isCurrentScreen
                                                             ? FontWeight.w600
                                                             : FontWeight.w400,
                                                   ),
