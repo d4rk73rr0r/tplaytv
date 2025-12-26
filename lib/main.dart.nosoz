@@ -90,17 +90,12 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen>
     with TickerProviderStateMixin, RouteAware {
-  static const int _indexScreenIndex = 0;
-  static const int _tvChannelsScreenIndex = 1;
-
   int _selectedIndex = 0;
   bool _isSidebarExpanded = false;
 
-  // Index va TV sahifalar state’iga kirish uchun key’lar
-  final GlobalKey<IndexScreenContentState> _indexScreenKey = GlobalKey();
-  final GlobalKey<TVChannelsScreenState> _tvChannelsScreenKey = GlobalKey();
-
-  late final List<Widget> _screens;
+  // ✅ Oddiy screen ro'yxati - focusNode UZATILMAYDI
+  // Screen'lar o'zlari internal focus node yaratadi
+  final List<Widget> _screens = const [IndexScreen(), TVChannelsScreen()];
 
   final List<Map<String, dynamic>> _menuItems = [
     {
@@ -126,6 +121,8 @@ class _MainScreenState extends State<MainScreen>
   late FocusNode _contentFocusNode;
   late FocusNode _sidebarFocusNode;
 
+  FocusNode? _lastFocusedContentNode;
+
   // Exit menu
   bool _isExitMenuOpen = false;
   int _exitSelectedIndex = 0;
@@ -138,12 +135,6 @@ class _MainScreenState extends State<MainScreen>
   @override
   void initState() {
     super.initState();
-
-    _screens = [
-      IndexScreen(key: _indexScreenKey),
-      TVChannelsScreen(key: _tvChannelsScreenKey),
-    ];
-
     _expandController = AnimationController(
       duration: const Duration(milliseconds: 200),
       vsync: this,
@@ -152,8 +143,8 @@ class _MainScreenState extends State<MainScreen>
       parent: _expandController,
       curve: Curves.easeInOut,
     );
-    _contentFocusNode = FocusNode(debugLabel: 'MainContent');
-    _sidebarFocusNode = FocusNode(debugLabel: 'Sidebar');
+    _contentFocusNode = FocusNode();
+    _sidebarFocusNode = FocusNode();
 
     _exitMenuController = AnimationController(
       duration: const Duration(milliseconds: 220),
@@ -200,30 +191,12 @@ class _MainScreenState extends State<MainScreen>
   void _restoreLastContentFocus() {
     Future.microtask(() {
       if (!mounted) return;
-      _requestFocusOnCurrentScreen();
-    });
-  }
-
-  void _requestFocusOnCurrentScreen() {
-    debugPrint('🎯 Main: Requesting focus on screen index $_selectedIndex');
-
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (!mounted) return;
-
-      if (_selectedIndex == _indexScreenIndex &&
-          _indexScreenKey.currentState != null) {
-        _indexScreenKey.currentState!.requestFocus();
-        debugPrint('🎯 Main: Requested focus on IndexScreen');
-      } else if (_selectedIndex == _tvChannelsScreenIndex &&
-          _tvChannelsScreenKey.currentState != null) {
-        _tvChannelsScreenKey.currentState!.requestFocus();
-        debugPrint('🎯 Main: Requested focus on TVChannelsScreen');
+      if (_lastFocusedContentNode != null &&
+          _lastFocusedContentNode!.context != null &&
+          _lastFocusedContentNode!.canRequestFocus) {
+        _lastFocusedContentNode!.requestFocus();
       } else {
         _contentFocusNode.requestFocus();
-        debugPrint(
-          '🎯 Main: Fallback - requested focus on content node '
-          '(state: index=${_indexScreenKey.currentState}, tv=${_tvChannelsScreenKey.currentState})',
-        );
       }
     });
   }
@@ -232,6 +205,7 @@ class _MainScreenState extends State<MainScreen>
     setState(() {
       _isSidebarExpanded = !_isSidebarExpanded;
       if (_isSidebarExpanded) {
+        _lastFocusedContentNode = FocusManager.instance.primaryFocus;
         _expandController.forward();
         _sidebarFocusNode.requestFocus();
       } else {
@@ -244,24 +218,14 @@ class _MainScreenState extends State<MainScreen>
     });
   }
 
-  /// Main content uchun key handler.
-  ///
-  /// Sidebar faqat:
-  /// - IndexScreen ichida chekka (left boundary) holatidan
-  /// - TVChannelsScreen ichida chekka (birinchi card) holatidan
-  /// kelgan forwarded eventlar orqali ochiladi.
-  ///
-  /// Shuning uchun bu yerda `arrowLeft` endi **bevosita** sidebar ochmaydi.
   KeyEventResult _handleContentKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
-
-    // Bu Focus faqat “fallback”/root uchun.
-    // Child ekranlar eventni `ignored` qilib parentga uzatsa,
-    // bu yerda shartli ravishda Sidebar ochsa bo‘ladi.
-    // Lekin chekka logika ekranning o‘zida yoziladi, shuning uchun
-    // bu yerda `arrowLeft` bilan ishlamaymiz.
+    if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      _toggleSidebar();
+      return KeyEventResult.handled;
+    }
     return KeyEventResult.ignored;
   }
 
@@ -328,7 +292,7 @@ class _MainScreenState extends State<MainScreen>
   }
 
   void _onMenuItemSelected(int index) {
-    // Katalog va Sevimlilar vaqtincha yo‘q
+    // Catalog va Favorites vaqtincha disabled (index 2 va 3)
     if (index > 1) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -345,12 +309,6 @@ class _MainScreenState extends State<MainScreen>
       _selectedIndex = index;
     });
     _toggleSidebar();
-
-    Future.delayed(const Duration(milliseconds: 150), () {
-      if (mounted) {
-        _requestFocusOnCurrentScreen();
-      }
-    });
   }
 
   Future<bool> _onWillPop() async {
@@ -598,7 +556,7 @@ class _MainScreenState extends State<MainScreen>
         backgroundColor: const Color(0xFF0F0F0F),
         body: Stack(
           children: [
-            // Main content
+            // ✅ Main content - main. dart.bak dagi kabi
             FocusTraversalGroup(
               policy: ReadingOrderTraversalPolicy(),
               child: Focus(

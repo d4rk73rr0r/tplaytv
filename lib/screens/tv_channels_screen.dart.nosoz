@@ -36,10 +36,10 @@ class TVChannelsScreen extends StatefulWidget {
   final FocusNode? focusNode;
 
   @override
-  State<TVChannelsScreen> createState() => TVChannelsScreenState();
+  State<TVChannelsScreen> createState() => _TVChannelsScreenState();
 }
 
-class TVChannelsScreenState extends State<TVChannelsScreen> {
+class _TVChannelsScreenState extends State<TVChannelsScreen> {
   // Data
   List<dynamic> categories = [];
   Map<String, List<dynamic>> channelsByCategory = {};
@@ -84,6 +84,7 @@ class TVChannelsScreenState extends State<TVChannelsScreen> {
         .clamp(0, _sources.length - 1);
     _loadTVData();
 
+    // Focus'ni zamonaviy usulda so'rash
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _requestFocusSafely();
@@ -111,17 +112,12 @@ class TVChannelsScreenState extends State<TVChannelsScreen> {
     });
   }
 
-  void requestFocus() {
-    if (!_mainFocusNode.hasFocus) {
-      _mainFocusNode.requestFocus();
-      debugPrint(
-        '🎯 TV Channels: Focus requested (hasFocus: ${_mainFocusNode.hasFocus})',
-      );
-    }
-  }
-
+  // ✅ Xavfsiz focus so'rash
   void _requestFocusSafely() {
-    requestFocus();
+    if (!_mainFocusNode.hasFocus && ModalRoute.of(context)?.isCurrent == true) {
+      _mainFocusNode.requestFocus();
+      debugPrint('🎯 TV Channels:  Focus requested');
+    }
   }
 
   @override
@@ -139,7 +135,6 @@ class TVChannelsScreenState extends State<TVChannelsScreen> {
   }
 
   // ---------- Data fetching ----------
-
   Future<void> _loadTVData() async {
     if (!mounted) return;
 
@@ -261,7 +256,6 @@ class TVChannelsScreenState extends State<TVChannelsScreen> {
   }
 
   // ---------- Player ----------
-
   Future<void> _playChannel(
     String channelId,
     String title,
@@ -287,10 +281,10 @@ class TVChannelsScreenState extends State<TVChannelsScreen> {
     }
 
     final selectedPlayer = await _showPlayerSelectionDialog();
-
-    if (mounted) _requestFocusSafely();
-
     if (selectedPlayer == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _requestFocusSafely();
+      });
       return;
     }
 
@@ -322,10 +316,11 @@ class TVChannelsScreenState extends State<TVChannelsScreen> {
                 controlBarColor: Colors.black.withOpacity(0.8),
                 progressBarPlayedColor: Colors.white,
               ),
-              notificationConfiguration:
-                  const BetterPlayerNotificationConfiguration(
-                    showNotification: false,
-                  ),
+              notificationConfiguration: BetterPlayerNotificationConfiguration(
+                showNotification: false,
+                title: title,
+                author: source,
+              ),
             ),
           ),
         );
@@ -342,6 +337,7 @@ class TVChannelsScreenState extends State<TVChannelsScreen> {
       } catch (e) {
         if (mounted) _showErrorDialog("Tashqi pleerni ochishda xato: $e");
       }
+      if (mounted) _requestFocusSafely();
     }
   }
 
@@ -349,7 +345,6 @@ class TVChannelsScreenState extends State<TVChannelsScreen> {
     return await showDialog<String>(
       context: context,
       barrierDismissible: false,
-      useRootNavigator: false,
       builder:
           (dialogContext) => _PlayerSelectionDialog(
             onSelected: (value) => Navigator.pop(dialogContext, value),
@@ -363,7 +358,6 @@ class TVChannelsScreenState extends State<TVChannelsScreen> {
       showDialog(
         context: context,
         barrierDismissible: false,
-        useRootNavigator: false,
         builder:
             (dialogContext) => _ErrorDialog(
               message: message,
@@ -378,7 +372,6 @@ class TVChannelsScreenState extends State<TVChannelsScreen> {
   }
 
   // ---------- Focus & navigation ----------
-
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) {
       return KeyEventResult.ignored;
@@ -431,8 +424,7 @@ class TVChannelsScreenState extends State<TVChannelsScreen> {
     return key == LogicalKeyboardKey.escape ||
         key == LogicalKeyboardKey.goBack ||
         key == LogicalKeyboardKey.backspace ||
-        key == LogicalKeyboardKey.browserBack ||
-        key == LogicalKeyboardKey.gameButtonB;
+        key == LogicalKeyboardKey.browserBack;
   }
 
   bool _handleSourcesNavigation(LogicalKeyboardKey key) {
@@ -492,31 +484,17 @@ class TVChannelsScreenState extends State<TVChannelsScreen> {
   ) {
     final lastIndex = currentChannels.length - 1;
 
-    // CHAPGA harakat
-    if (key == LogicalKeyboardKey.arrowLeft) {
-      // Agar birinchi ustundagi card bo‘lsak (0,5,10,...) ->
-      // bu holatda Sidebar ochilishi uchun eventni parentga uzatamiz
-      if (_selectedChannelIndex % _rowSize == 0) {
-        return false; // false → KeyEventResult.ignored parentga
-      }
-
-      if (_selectedChannelIndex > 0) {
-        _selectedChannelIndex--;
-        _scrollToChannelIndex();
-        return true;
-      }
-      return false;
-    }
-
-    // O'NGA
     if (key == LogicalKeyboardKey.arrowRight &&
         _selectedChannelIndex < lastIndex) {
       _selectedChannelIndex++;
       _scrollToChannelIndex();
       return true;
-    }
-
-    if (key == LogicalKeyboardKey.arrowDown) {
+    } else if (key == LogicalKeyboardKey.arrowLeft &&
+        _selectedChannelIndex > 0) {
+      _selectedChannelIndex--;
+      _scrollToChannelIndex();
+      return true;
+    } else if (key == LogicalKeyboardKey.arrowDown) {
       final nextIndex = _selectedChannelIndex + _rowSize;
       if (nextIndex <= lastIndex) {
         _selectedChannelIndex = nextIndex;
@@ -614,6 +592,7 @@ class TVChannelsScreenState extends State<TVChannelsScreen> {
     }
   }
 
+  // ---------- Helpers ----------
   void _onSourceChanged(String newSource) {
     if (newSource != selectedSource && mounted) {
       setState(() {
@@ -637,7 +616,6 @@ class TVChannelsScreenState extends State<TVChannelsScreen> {
   }
 
   // ---------- UI ----------
-
   Widget _buildSourceRow() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -916,11 +894,13 @@ class TVChannelsScreenState extends State<TVChannelsScreen> {
     );
   }
 
+  // ---------- Build ----------
   @override
   Widget build(BuildContext context) {
+    // ✅ O'ZGARTIRISH 1: autofocus = false (parent nazorat qiladi)
     return Focus(
       focusNode: _mainFocusNode,
-      autofocus: false,
+      autofocus: false, // ✅ Parent'dan focus keladi
       onKeyEvent: _handleKeyEvent,
       child: Scaffold(
         backgroundColor: Colors.black,
@@ -956,8 +936,7 @@ class TVChannelsScreenState extends State<TVChannelsScreen> {
   }
 }
 
-// Dialog widget'lari
-
+// ✅ Dialog widget'lari (o'zgarishsiz)
 class _PlayerSelectionDialog extends StatefulWidget {
   final Function(String) onSelected;
   final VoidCallback onCancel;
@@ -972,11 +951,6 @@ class _PlayerSelectionDialog extends StatefulWidget {
 }
 
 class _PlayerSelectionDialogState extends State<_PlayerSelectionDialog> {
-  static const int _internalPlayerIndex = 0;
-  static const int _externalPlayerIndex = 1;
-  static const int _cancelIndex = 2;
-  static const int _maxOptionIndex = 2;
-
   int _selectedIndex = 0;
   final FocusNode _dialogFocusNode = FocusNode();
 
@@ -999,8 +973,7 @@ class _PlayerSelectionDialogState extends State<_PlayerSelectionDialog> {
 
     final key = event.logicalKey;
 
-    if (key == LogicalKeyboardKey.arrowDown &&
-        _selectedIndex < _maxOptionIndex) {
+    if (key == LogicalKeyboardKey.arrowDown && _selectedIndex < 1) {
       setState(() => _selectedIndex++);
       return KeyEventResult.handled;
     } else if (key == LogicalKeyboardKey.arrowUp && _selectedIndex > 0) {
@@ -1008,19 +981,14 @@ class _PlayerSelectionDialogState extends State<_PlayerSelectionDialog> {
       return KeyEventResult.handled;
     } else if (key == LogicalKeyboardKey.enter ||
         key == LogicalKeyboardKey.select) {
-      if (_selectedIndex == _internalPlayerIndex) {
+      if (_selectedIndex == 0) {
         widget.onSelected('better_player');
-      } else if (_selectedIndex == _externalPlayerIndex) {
+      } else {
         widget.onSelected('external');
-      } else if (_selectedIndex == _cancelIndex) {
-        widget.onCancel();
       }
       return KeyEventResult.handled;
     } else if (key == LogicalKeyboardKey.escape ||
-        key == LogicalKeyboardKey.goBack ||
-        key == LogicalKeyboardKey.backspace ||
-        key == LogicalKeyboardKey.browserBack ||
-        key == LogicalKeyboardKey.gameButtonB) {
+        key == LogicalKeyboardKey.goBack) {
       widget.onCancel();
       return KeyEventResult.handled;
     }
@@ -1047,19 +1015,27 @@ class _PlayerSelectionDialogState extends State<_PlayerSelectionDialog> {
             mainAxisSize: MainAxisSize.min,
             children: [
               _buildOption(
-                _internalPlayerIndex,
+                0,
                 Icons.play_circle_filled,
                 "Ichki pleer:  Better Player",
               ),
-              _buildOption(
-                _externalPlayerIndex,
-                Icons.video_library,
-                "Tashqi pleer bilan ochish",
-              ),
-              _buildOption(_cancelIndex, Icons.close, "Bekor qilish"),
+              _buildOption(1, Icons.video_library, "Tashqi pleer bilan ochish"),
             ],
           ),
         ),
+        actions: [
+          TextButton(
+            onPressed: widget.onCancel,
+            style: TextButton.styleFrom(
+              backgroundColor: Colors.grey[800],
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+            ),
+            child: const Text(
+              "Bekor qilish",
+              style: TextStyle(fontSize: 20, color: Colors.white),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -25,9 +25,9 @@ final customCacheManager = CacheManager(
   ),
 );
 
-// Yordamchi: navigator popdan keyin fokusni tiklash uchun
+// Yordamchi:  navigator popdan keyin fokusni tiklash uchun
 void _requestIndexFocus(BuildContext context) {
-  final state = context.findAncestorStateOfType<IndexScreenContentState>();
+  final state = context.findAncestorStateOfType<_IndexScreenContentState>();
   state?._requestContentFocus();
 }
 
@@ -181,7 +181,7 @@ class IndexScreenProvider with ChangeNotifier {
   }
 }
 
-// IndexScreen widget
+// ✅ YANGI:  focusNode parametr qo'shildi
 class IndexScreen extends StatelessWidget {
   final FocusNode? focusNode;
 
@@ -191,23 +191,25 @@ class IndexScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) => IndexScreenProvider(),
-      child: IndexScreenContent(focusNode: focusNode),
+      child: IndexScreenContent(focusNode: focusNode), // ✅ Uzatish
     );
   }
 }
 
+// ✅ YANGI: focusNode parametr qo'shildi
 class IndexScreenContent extends StatefulWidget {
   final FocusNode? focusNode;
 
   const IndexScreenContent({super.key, this.focusNode});
 
   @override
-  State<IndexScreenContent> createState() => IndexScreenContentState();
+  State<IndexScreenContent> createState() => _IndexScreenContentState();
 }
 
-class IndexScreenContentState extends State<IndexScreenContent> {
+class _IndexScreenContentState extends State<IndexScreenContent> {
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
+  // ✅ YANGI: Internal yoki external FocusNode
   late final FocusNode _internalFocusNode = FocusNode(
     debugLabel: 'IndexInternal',
   );
@@ -217,13 +219,18 @@ class IndexScreenContentState extends State<IndexScreenContent> {
   int _selectedSectionIndex = 0;
   int _selectedItemIndex = 0;
 
+  // Scroll controller for vertical scrolling
   late ScrollController _scrollController;
+
+  // Horizontal scroll controllers for each section
   final Map<int, ScrollController> _horizontalScrollControllers = {};
 
+  // Global keys for sections to enable scrolling
   final GlobalKey _bannerKey = GlobalKey();
   final GlobalKey _latestViewedKey = GlobalKey();
   final GlobalKey _recommendedKey = GlobalKey();
   final GlobalKey _genresKey = GlobalKey();
+  // Dynamic keys for category sections
   final Map<int, GlobalKey> _categoryKeys = {};
 
   @override
@@ -233,7 +240,7 @@ class IndexScreenContentState extends State<IndexScreenContent> {
     _scrollController = ScrollController();
 
     _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
-      results,
+      List<ConnectivityResult> results,
     ) {
       if (results.every((result) => result == ConnectivityResult.none)) {
         final provider = Provider.of<IndexScreenProvider>(
@@ -257,12 +264,13 @@ class IndexScreenContentState extends State<IndexScreenContent> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    // ✅ Re-request focus when widget becomes active again
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted &&
           !_contentFocusNode.hasFocus &&
           ModalRoute.of(context)?.isCurrent == true) {
         _contentFocusNode.requestFocus();
-        debugPrint('🎯 IndexScreen: Focus requested (didChangeDependencies)');
+        debugPrint('🎯 IndexScreen: Focus requested');
       }
     });
   }
@@ -270,30 +278,22 @@ class IndexScreenContentState extends State<IndexScreenContent> {
   @override
   void didUpdateWidget(IndexScreenContent oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // ✅ Focus'ni tiklash widget yangilanganda
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted &&
           !_contentFocusNode.hasFocus &&
           ModalRoute.of(context)?.isCurrent == true) {
         _contentFocusNode.requestFocus();
-        debugPrint('🎯 IndexScreen: Focus requested (didUpdateWidget)');
       }
     });
   }
 
   void _requestContentFocus() {
     Future.microtask(() {
-      if (mounted) {
+      if (mounted && ModalRoute.of(context)?.isCurrent == true) {
         _contentFocusNode.requestFocus();
-        debugPrint(
-          '🎯 IndexScreen: Focus requested (hasFocus: ${_contentFocusNode.hasFocus})',
-        );
       }
     });
-  }
-
-  /// Public method that MainScreen calls
-  void requestFocus() {
-    _requestContentFocus();
   }
 
   @override
@@ -303,6 +303,7 @@ class IndexScreenContentState extends State<IndexScreenContent> {
     for (final controller in _horizontalScrollControllers.values) {
       controller.dispose();
     }
+    // ✅ Faqat o'zimizniki bo'lsa dispose qilish
     if (_ownsFocusNode) {
       _contentFocusNode.dispose();
     }
@@ -493,8 +494,7 @@ class IndexScreenContentState extends State<IndexScreenContent> {
     return newFilms.take(20).toList();
   }
 
-  // Scroll helpers
-
+  // Scroll to the selected section
   void _scrollToSelectedSection() {
     GlobalKey? key;
     int currentSection = 0;
@@ -645,6 +645,7 @@ class IndexScreenContentState extends State<IndexScreenContent> {
 
   // TV Remote control key event handler
   KeyEventResult _handleContentKeyEvent(FocusNode node, KeyEvent event) {
+    // KeyDown + KeyRepeat ni qo'llab-quvvatlash
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
@@ -656,13 +657,11 @@ class IndexScreenContentState extends State<IndexScreenContent> {
     if (provider.latestViewed.isNotEmpty) sectionCount++;
     if (provider.recommendedFilms.isNotEmpty) sectionCount++;
     if (provider.genresPreview.isNotEmpty) sectionCount++;
-    if (provider.categories.isNotEmpty) {
+    if (provider.categories.isNotEmpty)
       sectionCount += provider.categories.length;
-    }
 
     if (sectionCount == 0) return KeyEventResult.ignored;
 
-    // DOWN
     if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
       setState(() {
         if (_selectedSectionIndex < sectionCount - 1) {
@@ -674,7 +673,6 @@ class IndexScreenContentState extends State<IndexScreenContent> {
       return KeyEventResult.handled;
     }
 
-    // UP
     if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
       setState(() {
         if (_selectedSectionIndex > 0) {
@@ -686,13 +684,9 @@ class IndexScreenContentState extends State<IndexScreenContent> {
       return KeyEventResult.handled;
     }
 
-    // RIGHT
     if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
       setState(() {
-        final maxItems = _getMaxItemsForSection(
-          _selectedSectionIndex,
-          provider,
-        );
+        int maxItems = _getMaxItemsForSection(_selectedSectionIndex, provider);
         if (_selectedItemIndex < maxItems - 1) {
           _selectedItemIndex++;
         }
@@ -701,7 +695,6 @@ class IndexScreenContentState extends State<IndexScreenContent> {
       return KeyEventResult.handled;
     }
 
-    // LEFT – faqat BANNERS chap chekkasida parentga uzatamiz
     if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
       if (_selectedItemIndex > 0) {
         setState(() {
@@ -709,24 +702,11 @@ class IndexScreenContentState extends State<IndexScreenContent> {
         });
         _scrollToCurrentItem();
         return KeyEventResult.handled;
-      }
-
-      // Bu yerga faqat _selectedItemIndex == 0 bo‘lganda tushamiz.
-      // Faqat banners bo‘limi (ekran chap chekkasi) bo‘lsa, parentga uzatamiz.
-      final bannersNotEmpty = provider.banners.isNotEmpty;
-      const bannerSectionIndex = 0; // banners bo‘lsa, har doim 0
-
-      if (bannersNotEmpty && _selectedSectionIndex == bannerSectionIndex) {
-        // Parentga forwarding – MainScreen arrowLeftni ko‘rib Sidebar ochadi.
+      } else {
         return KeyEventResult.ignored;
       }
-
-      // Boshqa bo‘limlarda chekkaga kelganda ham Sidebar ochilmasin:
-      // hech narsa qilmaymiz, lekin handled qaytaramiz.
-      return KeyEventResult.handled;
     }
 
-    // ENTER/SELECT
     if (event.logicalKey == LogicalKeyboardKey.select ||
         event.logicalKey == LogicalKeyboardKey.enter) {
       _activateSelectedItem(provider);
@@ -916,7 +896,7 @@ class IndexScreenContentState extends State<IndexScreenContent> {
       backgroundColor: Colors.black,
       body: FocusTraversalGroup(
         child: Focus(
-          autofocus: false,
+          autofocus: false, // ✅ Parent nazorat qiladi
           focusNode: _contentFocusNode,
           onKeyEvent: _handleContentKeyEvent,
           skipTraversal: false,
@@ -940,6 +920,7 @@ class IndexScreenContentState extends State<IndexScreenContent> {
                         child: Center(
                           child: Text(
                             'Bannerlar mavjud emas',
+                            // Qism 1 ning davomi...
                             style: TextStyle(fontSize: 20, color: Colors.white),
                           ),
                         ),
