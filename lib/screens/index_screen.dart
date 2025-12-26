@@ -718,7 +718,7 @@ class IndexScreenContentState extends State<IndexScreenContent> {
       return KeyEventResult.handled;
     }
 
-    // LEFT – faqat BANNERS chap chekkasida parentga uzatamiz
+    // LEFT – faqat chap chekkasida parentga uzatamiz
     if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
       if (_selectedItemIndex > 0) {
         setState(() {
@@ -728,19 +728,9 @@ class IndexScreenContentState extends State<IndexScreenContent> {
         return KeyEventResult.handled;
       }
 
-      // Bu yerga faqat _selectedItemIndex == 0 bo‘lganda tushamiz.
-      // Faqat banners bo‘limi (ekran chap chekkasi) bo‘lsa, parentga uzatamiz.
-      final bannersNotEmpty = provider.banners.isNotEmpty;
-      const bannerSectionIndex = 0; // banners bo‘lsa, har doim 0
-
-      if (bannersNotEmpty && _selectedSectionIndex == bannerSectionIndex) {
-        // Parentga forwarding – MainScreen arrowLeftni ko‘rib Sidebar ochadi.
-        return KeyEventResult.ignored;
-      }
-
-      // Boshqa bo‘limlarda chekkaga kelganda ham Sidebar ochilmasin:
-      // hech narsa qilmaymiz, lekin handled qaytaramiz.
-      return KeyEventResult.handled;
+      // Bu yerga faqat _selectedItemIndex == 0 bo'lganda tushamiz.
+      // Chap chekkada bo'lsak, parentga uzatamiz sidebar ochish uchun
+      return KeyEventResult.ignored;
     }
 
     // ENTER/SELECT
