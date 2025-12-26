@@ -112,12 +112,26 @@ class TVChannelsScreenState extends State<TVChannelsScreen> {
   }
 
   void requestFocus() {
-    if (!_mainFocusNode.hasFocus) {
-      _mainFocusNode.requestFocus();
-      debugPrint(
-        '🎯 TV Channels: Focus requested (hasFocus: ${_mainFocusNode.hasFocus})',
-      );
-    }
+    debugPrint('🎯 TV Channels: requestFocus called');
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        debugPrint('🎯 TV Channels: Not mounted, skipping focus request');
+        return;
+      }
+      
+      if (_mainFocusNode.canRequestFocus && !_mainFocusNode.hasFocus) {
+        _mainFocusNode.requestFocus();
+        debugPrint(
+          '🎯 TV Channels: Focus requested (hasFocus: ${_mainFocusNode.hasFocus}, '
+          'canRequestFocus: ${_mainFocusNode.canRequestFocus})',
+        );
+      } else {
+        debugPrint(
+          '🎯 TV Channels: Focus already set or cannot request '
+          '(hasFocus: ${_mainFocusNode.hasFocus}, canRequestFocus: ${_mainFocusNode.canRequestFocus})',
+        );
+      }
+    });
   }
 
   void _requestFocusSafely() {
@@ -387,8 +401,14 @@ class TVChannelsScreenState extends State<TVChannelsScreen> {
     final key = event.logicalKey;
 
     if (_isBackKey(key)) {
-      Navigator.pop(context);
-      return KeyEventResult.handled;
+      // Use maybePop to check if there's a route to pop
+      // If false, it means we're on the main route and should let parent handle it
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+        return KeyEventResult.handled;
+      }
+      // Let parent (MainScreen) handle it - it will trigger exit menu
+      return KeyEventResult.ignored;
     }
 
     if (key == LogicalKeyboardKey.contextMenu || key == LogicalKeyboardKey.f1) {

@@ -281,12 +281,29 @@ class IndexScreenContentState extends State<IndexScreenContent> {
   }
 
   void _requestContentFocus() {
-    Future.microtask(() {
-      if (mounted) {
+    debugPrint('🎯 IndexScreen: _requestContentFocus called');
+    // Use addPostFrameCallback to ensure widget tree is fully built
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        debugPrint('🎯 IndexScreen: Not mounted, skipping focus request');
+        return;
+      }
+      
+      if (_contentFocusNode.canRequestFocus) {
         _contentFocusNode.requestFocus();
         debugPrint(
-          '🎯 IndexScreen: Focus requested (hasFocus: ${_contentFocusNode.hasFocus})',
+          '🎯 IndexScreen: Focus requested (hasFocus: ${_contentFocusNode.hasFocus}, '
+          'canRequestFocus: ${_contentFocusNode.canRequestFocus})',
         );
+      } else {
+        debugPrint('🎯 IndexScreen: Focus node cannot request focus');
+        // Try again after a short delay
+        Future.delayed(const Duration(milliseconds: 50), () {
+          if (mounted && _contentFocusNode.canRequestFocus) {
+            _contentFocusNode.requestFocus();
+            debugPrint('🎯 IndexScreen: Retry focus request successful');
+          }
+        });
       }
     });
   }
@@ -780,7 +797,11 @@ class IndexScreenContentState extends State<IndexScreenContent> {
 
   Future<void> _pushAndRefocus(Widget page) async {
     await Navigator.push(context, createSlideRoute(page));
-    _requestContentFocus();
+    // Add delay to ensure widget tree is stable before requesting focus
+    await Future.delayed(const Duration(milliseconds: 100));
+    if (mounted) {
+      _requestContentFocus();
+    }
   }
 
   void _activateSelectedItem(IndexScreenProvider provider) {

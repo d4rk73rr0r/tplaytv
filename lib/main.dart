@@ -251,17 +251,23 @@ class _MainScreenState extends State<MainScreen>
   /// - TVChannelsScreen ichida chekka (birinchi card) holatidan
   /// kelgan forwarded eventlar orqali ochiladi.
   ///
-  /// Shuning uchun bu yerda `arrowLeft` endi **bevosita** sidebar ochmaydi.
+  /// Child ekranlar eventni `ignored` qilib parentga uzatsa,
+  /// bu yerda Sidebar ochamiz.
   KeyEventResult _handleContentKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
 
-    // Bu Focus faqat “fallback”/root uchun.
-    // Child ekranlar eventni `ignored` qilib parentga uzatsa,
-    // bu yerda shartli ravishda Sidebar ochsa bo‘ladi.
-    // Lekin chekka logika ekranning o‘zida yoziladi, shuning uchun
-    // bu yerda `arrowLeft` bilan ishlamaymiz.
+    final key = event.logicalKey;
+
+    // Child screen left chekkadan arrowLeft yuborganda sidebar ochamiz
+    if (key == LogicalKeyboardKey.arrowLeft) {
+      if (!_isSidebarExpanded && !_isExitMenuOpen) {
+        _toggleSidebar();
+        return KeyEventResult.handled;
+      }
+    }
+
     return KeyEventResult.ignored;
   }
 
