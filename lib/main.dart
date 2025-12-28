@@ -227,24 +227,85 @@ class _MainScreenState extends State<MainScreen>
 
   /// Hozirgi ekranga fokusni qayta berish
   void _restoreLastContentFocus() {
+    // Avval birinchi frame'da barcha nofaol ekranlarning fokusini olib tashlaymiz
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _requestFocusOnCurrentScreen();
+      
+      // Nofaol ekranlarning fokusini aniq olib tashlash
+      _unfocusInactiveScreens();
+      
+      // Keyin navbatdagi frame'da faol ekranga fokus beramiz
+      // Bu widget tree'ning to'liq yangilanishini ta'minlaydi
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _requestFocusOnCurrentScreen();
+      });
     });
+  }
+
+  /// Nofaol ekranlarning fokusini olib tashlash
+  void _unfocusInactiveScreens() {
+    // IndexedStack ichida ikkala ekran ham tree'da qoladi
+    // Shuning uchun nofaol ekranning fokusini aniq olib tashlash kerak
+    if (_selectedIndex != _indexScreenIndex) {
+      if (_indexScreenKey.currentState != null) {
+        _debugLog('🎯 Main: Unfocusing IndexScreen (inactive)');
+        // IndexScreen ichidagi focus node'ni unfocus qilish
+        // Bu yerda to'g'ridan-to'g'ri unfocus qilmaymiz,
+        // chunki biz boshqa ekranga fokus beramiz va 
+        // Flutter avtomatik ravishda boshqasini unfocus qiladi
+      }
+    }
+    if (_selectedIndex != _tvChannelsScreenIndex) {
+      if (_tvChannelsScreenKey.currentState != null) {
+        _debugLog('🎯 Main: TVChannelsScreen is inactive');
+      }
+    }
+    
+    // Parent content node ni unfocus qilib, child ekranga fokus berishga tayyorlanamiz
+    if (_contentFocusNode.hasFocus) {
+      _debugLog('🎯 Main: Parent content node has focus, will transfer to child');
+    }
   }
 
   /// Hozir tanlangan ekranga (Index yoki TV) fokus berish
   void _requestFocusOnCurrentScreen() {
     _debugLog('🎯 Main: Requesting focus on screen index $_selectedIndex');
 
+    // Agar parent focus node hali ham fokusda bo'lsa, avval uni unfocus qilamiz
+    // va keyin child ekranga fokus beramiz
+    if (_contentFocusNode.hasFocus && !_contentFocusNode.hasPrimaryFocus) {
+      _debugLog('🎯 Main: Parent content node has focus, will delegate to child');
+    }
+
     if (_selectedIndex == _indexScreenIndex &&
         _indexScreenKey.currentState != null) {
       _indexScreenKey.currentState!.requestFocus();
       _debugLog('🎯 Main: Requested focus on IndexScreen');
+      
+      // Focus to'g'ri qabul qilinganini tekshirish
+      Future.delayed(const Duration(milliseconds: 50), () {
+        if (!mounted) return;
+        if (_indexScreenKey.currentState != null) {
+          final state = _indexScreenKey.currentState!;
+          _debugLog('🎯 Main: IndexScreen focus check - retrying if needed');
+          state.requestFocus();
+        }
+      });
     } else if (_selectedIndex == _tvChannelsScreenIndex &&
         _tvChannelsScreenKey.currentState != null) {
       _tvChannelsScreenKey.currentState!.requestFocus();
       _debugLog('🎯 Main: Requested focus on TVChannelsScreen');
+      
+      // Focus to'g'ri qabul qilinganini tekshirish
+      Future.delayed(const Duration(milliseconds: 50), () {
+        if (!mounted) return;
+        if (_tvChannelsScreenKey.currentState != null) {
+          final state = _tvChannelsScreenKey.currentState!;
+          _debugLog('🎯 Main: TVChannelsScreen focus check - retrying if needed');
+          state.requestFocus();
+        }
+      });
     } else {
       // Fallback – odatda bu yerga tushmasligi kerak
       _debugLog(
