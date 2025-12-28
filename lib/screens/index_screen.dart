@@ -282,30 +282,67 @@ class IndexScreenContentState extends State<IndexScreenContent> {
         return;
       }
 
-      if (_contentFocusNode.canRequestFocus) {
-        _contentFocusNode.requestFocus();
-        _debugLog(
-          '🎯 IndexScreen: focus requested '
-          '(hasFocus=${_contentFocusNode.hasFocus}, '
-          'canRequestFocus=${_contentFocusNode.canRequestFocus})',
-        );
+      _doRequestFocus();
+    });
+  }
+
+  /// Focus so'rashning asosiy logikasi
+  void _doRequestFocus({int retryCount = 0}) {
+    if (!mounted) return;
+    
+    const maxRetries = 3;
+    
+    if (_contentFocusNode.canRequestFocus) {
+      // FocusScope orqali focus so'rash - bu yanada ishonchli usul
+      // chunki focus scope fokus o'zgarishlarini to'g'ri boshqaradi
+      if (context.mounted) {
+        FocusScope.of(context).requestFocus(_contentFocusNode);
       } else {
-        _debugLog(
-          '🎯 IndexScreen: cannot request focus now, will retry after 50ms',
-        );
+        _contentFocusNode.requestFocus();
+      }
+      
+      _debugLog(
+        '🎯 IndexScreen: focus requested via FocusScope '
+        '(hasFocus=${_contentFocusNode.hasFocus}, '
+        'canRequestFocus=${_contentFocusNode.canRequestFocus}, '
+        'retryCount=$retryCount)',
+      );
+      
+      // Focus to'g'ri olingani tekshirish uchun kichik kechikish
+      Future.delayed(const Duration(milliseconds: 30), () {
+        if (!mounted) return;
+        
+        // Agar focus hali ham olinmagan bo'lsa va retry qolgan bo'lsa
+        if (!_contentFocusNode.hasFocus && retryCount < maxRetries) {
+          _debugLog(
+            '🎯 IndexScreen: focus not acquired yet, retrying '
+            '(attempt ${retryCount + 1}/$maxRetries)',
+          );
+          _doRequestFocus(retryCount: retryCount + 1);
+        } else if (_contentFocusNode.hasFocus) {
+          _debugLog('🎯 IndexScreen: focus successfully acquired');
+        } else {
+          _debugLog(
+            '⚠️ IndexScreen: focus could not be acquired after $maxRetries retries',
+          );
+        }
+      });
+    } else {
+      _debugLog(
+        '🎯 IndexScreen: cannot request focus now (canRequestFocus=false), '
+        'will retry after 50ms',
+      );
+      if (retryCount < maxRetries) {
         Future.delayed(const Duration(milliseconds: 50), () {
           if (!mounted) return;
-          if (_contentFocusNode.canRequestFocus) {
-            _contentFocusNode.requestFocus();
-            _debugLog('🎯 IndexScreen: retry focus request successful');
-          } else {
-            _debugLog(
-              '🎯 IndexScreen: retry focus request failed (still cannot request)',
-            );
-          }
+          _doRequestFocus(retryCount: retryCount + 1);
         });
+      } else {
+        _debugLog(
+          '⚠️ IndexScreen: gave up requesting focus after $maxRetries retries',
+        );
       }
-    });
+    }
   }
 
   @override

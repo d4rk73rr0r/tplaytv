@@ -113,19 +113,66 @@ class TVChannelsScreenState extends State<TVChannelsScreen> {
         return;
       }
 
-      if (_mainFocusNode.canRequestFocus && !_mainFocusNode.hasFocus) {
+      _doRequestFocus();
+    });
+  }
+
+  /// Focus so'rashning asosiy logikasi
+  void _doRequestFocus({int retryCount = 0}) {
+    if (!mounted) return;
+    
+    const maxRetries = 3;
+    
+    if (_mainFocusNode.canRequestFocus) {
+      // FocusScope orqali focus so'rash - bu yanada ishonchli usul
+      // chunki focus scope fokus o'zgarishlarini to'g'ri boshqaradi
+      if (context.mounted) {
+        FocusScope.of(context).requestFocus(_mainFocusNode);
+      } else {
         _mainFocusNode.requestFocus();
-        debugPrint(
-          '🎯 TV Channels: Focus requested (hasFocus: ${_mainFocusNode.hasFocus}, '
-          'canRequestFocus: ${_mainFocusNode.canRequestFocus})',
-        );
+      }
+      
+      debugPrint(
+        '🎯 TV Channels: Focus requested via FocusScope (hasFocus: ${_mainFocusNode.hasFocus}, '
+        'canRequestFocus: ${_mainFocusNode.canRequestFocus}, '
+        'retryCount: $retryCount)',
+      );
+      
+      // Focus to'g'ri olingani tekshirish uchun kichik kechikish
+      Future.delayed(const Duration(milliseconds: 30), () {
+        if (!mounted) return;
+        
+        // Agar focus hali ham olinmagan bo'lsa va retry qolgan bo'lsa
+        if (!_mainFocusNode.hasFocus && retryCount < maxRetries) {
+          debugPrint(
+            '🎯 TV Channels: Focus not acquired yet, retrying '
+            '(attempt ${retryCount + 1}/$maxRetries)',
+          );
+          _doRequestFocus(retryCount: retryCount + 1);
+        } else if (_mainFocusNode.hasFocus) {
+          debugPrint('🎯 TV Channels: Focus successfully acquired');
+        } else {
+          debugPrint(
+            '⚠️ TV Channels: Focus could not be acquired after $maxRetries retries',
+          );
+        }
+      });
+    } else {
+      debugPrint(
+        '🎯 TV Channels: Cannot request focus now (canRequestFocus=false), '
+        'will retry after 50ms',
+      );
+      if (retryCount < maxRetries) {
+        Future.delayed(const Duration(milliseconds: 50), () {
+          if (!mounted) return;
+          _doRequestFocus(retryCount: retryCount + 1);
+        });
       } else {
         debugPrint(
-          '🎯 TV Channels: Focus already set or cannot request '
-          '(hasFocus: ${_mainFocusNode.hasFocus}, canRequestFocus: ${_mainFocusNode.canRequestFocus})',
+          '⚠️ TV Channels: Gave up requesting focus after $maxRetries retries',
         );
       }
-    });
+    }
   }
 
   void _requestFocusSafely() {
