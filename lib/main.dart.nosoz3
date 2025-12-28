@@ -90,20 +90,14 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen>
     with TickerProviderStateMixin, RouteAware {
-  // Constants
   static const int _indexScreenIndex = 0;
   static const int _tvChannelsScreenIndex = 1;
-  static const Duration _animationDuration = Duration(milliseconds: 200);
-  static const Duration _exitAnimationDuration = Duration(milliseconds: 220);
-  static const double _sidebarCollapsedWidth = 72.0;
-  static const double _sidebarExpandedWidth = 240.0;
 
-  // State variables
   int _selectedIndex = 0;
-  int _sidebarHighlightedIndex = 0;
+  int _sidebarHighlightedIndex = 0; // Separate index for sidebar menu highlight
   bool _isSidebarExpanded = false;
 
-  // Screen keys (IndexScreenContentState / TVChannelsScreenState)
+  // Index va TV sahifalar state’iga kirish uchun key’lar
   final GlobalKey<IndexScreenContentState> _indexScreenKey = GlobalKey();
   final GlobalKey<TVChannelsScreenState> _tvChannelsScreenKey = GlobalKey();
 
@@ -128,21 +122,18 @@ class _MainScreenState extends State<MainScreen>
     },
   ];
 
-  // Animation controllers
   late AnimationController _expandController;
   late Animation<double> _expandAnimation;
-  late AnimationController _exitMenuController;
-  late Animation<Offset> _exitMenuSlide;
-
-  // Focus nodes
-  late FocusNode _contentFocusNode; // Root content (faqat "shim" sifatida)
+  late FocusNode _contentFocusNode;
   late FocusNode _sidebarFocusNode;
-  late FocusNode _exitMenuFocusNode;
-  FocusNode? _lastFocusBeforeExitMenu;
 
-  // Exit menu state
+  // Exit menu
   bool _isExitMenuOpen = false;
   int _exitSelectedIndex = 0;
+  late AnimationController _exitMenuController;
+  late Animation<Offset> _exitMenuSlide;
+  late FocusNode _exitMenuFocusNode;
+  FocusNode? _lastFocusBeforeExitMenu;
   bool _ignoreNextWillPop = false;
 
   @override
@@ -154,29 +145,19 @@ class _MainScreenState extends State<MainScreen>
       TVChannelsScreen(key: _tvChannelsScreenKey),
     ];
 
-    _setupAnimations();
-    _setupFocusNodes();
-
-    // MUHIM: dastlabki fokusni root Focus'ga emas,
-    // hozirgi ekranga (IndexScreen) beramiz
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _requestFocusOnCurrentScreen();
-    });
-  }
-
-  void _setupAnimations() {
     _expandController = AnimationController(
-      duration: _animationDuration,
+      duration: const Duration(milliseconds: 200),
       vsync: this,
     );
     _expandAnimation = CurvedAnimation(
       parent: _expandController,
       curve: Curves.easeInOut,
     );
+    _contentFocusNode = FocusNode(debugLabel: 'MainContent');
+    _sidebarFocusNode = FocusNode(debugLabel: 'Sidebar');
 
     _exitMenuController = AnimationController(
-      duration: _exitAnimationDuration,
+      duration: const Duration(milliseconds: 220),
       vsync: this,
     );
     _exitMenuSlide = Tween<Offset>(
@@ -185,12 +166,11 @@ class _MainScreenState extends State<MainScreen>
     ).animate(
       CurvedAnimation(parent: _exitMenuController, curve: Curves.easeOutCubic),
     );
-  }
-
-  void _setupFocusNodes() {
-    _contentFocusNode = FocusNode(debugLabel: 'MainContentRoot');
-    _sidebarFocusNode = FocusNode(debugLabel: 'Sidebar');
     _exitMenuFocusNode = FocusNode(debugLabel: 'ExitMenu');
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _contentFocusNode.requestFocus();
+    });
   }
 
   @override
@@ -206,9 +186,9 @@ class _MainScreenState extends State<MainScreen>
   void dispose() {
     routeObserver.unsubscribe(this);
     _expandController.dispose();
-    _exitMenuController.dispose();
     _contentFocusNode.dispose();
     _sidebarFocusNode.dispose();
+    _exitMenuController.dispose();
     _exitMenuFocusNode.dispose();
     super.dispose();
   }
@@ -218,67 +198,65 @@ class _MainScreenState extends State<MainScreen>
     _restoreLastContentFocus();
   }
 
-  void _debugLog(String message) {
-    assert(() {
-      debugPrint(message);
-      return true;
-    }());
-  }
-
-  /// Hozirgi ekranga fokusni qayta berish
   void _restoreLastContentFocus() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    // Wait for sidebar animation and widget tree to stabilize
+    Future.delayed(const Duration(milliseconds: 250), () {
       if (!mounted) return;
       _requestFocusOnCurrentScreen();
     });
   }
 
-  /// Hozir tanlangan ekranga (Index yoki TV) fokus berish
   void _requestFocusOnCurrentScreen() {
-    _debugLog('🎯 Main: Requesting focus on screen index $_selectedIndex');
+    debugPrint('🎯 Main: Requesting focus on screen index $_selectedIndex');
 
-    if (_selectedIndex == _indexScreenIndex &&
-        _indexScreenKey.currentState != null) {
-      _indexScreenKey.currentState!.requestFocus();
-      _debugLog('🎯 Main: Requested focus on IndexScreen');
-    } else if (_selectedIndex == _tvChannelsScreenIndex &&
-        _tvChannelsScreenKey.currentState != null) {
-      _tvChannelsScreenKey.currentState!.requestFocus();
-      _debugLog('🎯 Main: Requested focus on TVChannelsScreen');
-    } else {
-      // Fallback – odatda bu yerga tushmasligi kerak
-      _debugLog(
-        '⚠️ Main: Fallback - requested focus on root content node '
-        '(indexState=${_indexScreenKey.currentState}, '
-        'tvState=${_tvChannelsScreenKey.currentState})',
-      );
-      _contentFocusNode.requestFocus();
-    }
+    Future.delayed(const Duration(milliseconds: 150), () {
+      if (!mounted) return;
+
+      if (_selectedIndex == _indexScreenIndex &&
+          _indexScreenKey.currentState != null) {
+        _indexScreenKey.currentState!.requestFocus();
+        debugPrint('🎯 Main: Requested focus on IndexScreen');
+      } else if (_selectedIndex == _tvChannelsScreenIndex &&
+          _tvChannelsScreenKey.currentState != null) {
+        _tvChannelsScreenKey.currentState!.requestFocus();
+        debugPrint('🎯 Main: Requested focus on TVChannelsScreen');
+      } else {
+        _contentFocusNode.requestFocus();
+        debugPrint(
+          '🎯 Main: Fallback - requested focus on content node '
+          '(state: index=${_indexScreenKey.currentState}, tv=${_tvChannelsScreenKey.currentState})',
+        );
+      }
+    });
   }
 
   void _toggleSidebar() {
     setState(() {
       _isSidebarExpanded = !_isSidebarExpanded;
       if (_isSidebarExpanded) {
+        // Reset sidebar highlight to current screen when opening
         _sidebarHighlightedIndex = _selectedIndex;
-        _expandController.forward().then((_) {
-          if (mounted && _isSidebarExpanded) {
-            _sidebarFocusNode.requestFocus();
-          }
-        });
+        _expandController.forward();
+        _sidebarFocusNode.requestFocus();
       } else {
-        _expandController.reverse().then((_) {
-          if (mounted && !_isSidebarExpanded) {
-            _sidebarFocusNode.unfocus();
-            _restoreLastContentFocus();
-          }
+        _expandController.reverse();
+        Future.microtask(() {
+          _sidebarFocusNode.unfocus();
+          _restoreLastContentFocus();
         });
       }
     });
   }
 
-  /// Root content uchun key handler.
-  /// Bu yerda faqat sidebar ochish uchun chap tugma ishlatiladi.
+  /// Main content uchun key handler.
+  ///
+  /// Sidebar faqat:
+  /// - IndexScreen ichida chekka (left boundary) holatidan
+  /// - TVChannelsScreen ichida chekka (birinchi card) holatidan
+  /// kelgan forwarded eventlar orqali ochiladi.
+  ///
+  /// Child ekranlar eventni `ignored` qilib parentga uzatsa,
+  /// bu yerda Sidebar ochamiz.
   KeyEventResult _handleContentKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
@@ -286,6 +264,7 @@ class _MainScreenState extends State<MainScreen>
 
     final key = event.logicalKey;
 
+    // Child screen left chekkadan arrowLeft yuborganda sidebar ochamiz
     if (key == LogicalKeyboardKey.arrowLeft) {
       if (!_isSidebarExpanded && !_isExitMenuOpen) {
         _toggleSidebar();
@@ -293,7 +272,6 @@ class _MainScreenState extends State<MainScreen>
       }
     }
 
-    // Qolgan tugmalar child ekranlarga ketadi
     return KeyEventResult.ignored;
   }
 
@@ -362,7 +340,7 @@ class _MainScreenState extends State<MainScreen>
   }
 
   void _onMenuItemSelected(int index) {
-    // Katalog va Sevimlilar hozircha yo‘q
+    // Katalog va Sevimlilar vaqtincha yo‘q
     if (index > 1) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -375,16 +353,13 @@ class _MainScreenState extends State<MainScreen>
       return;
     }
 
-    // Agar hozirgi sahifani tanlasa – faqat sidebar yopilsin
-    if (_selectedIndex == index) {
-      _toggleSidebar();
-      return;
-    }
-
     setState(() {
       _selectedIndex = index;
     });
     _toggleSidebar();
+
+    // Focus restoration is handled by _toggleSidebar -> _restoreLastContentFocus
+    // No need for additional delayed focus request here
   }
 
   Future<bool> _onWillPop() async {
@@ -411,7 +386,8 @@ class _MainScreenState extends State<MainScreen>
       _exitSelectedIndex = 0;
       _lastFocusBeforeExitMenu = FocusManager.instance.primaryFocus;
     });
-    _exitMenuController.forward().then((_) {
+    _exitMenuController.forward();
+    Future.microtask(() {
       if (mounted && _isExitMenuOpen) {
         _exitMenuFocusNode.requestFocus();
       }
@@ -420,18 +396,14 @@ class _MainScreenState extends State<MainScreen>
 
   void _closeExitMenu() {
     if (!_isExitMenuOpen) return;
-
     setState(() {
       _isExitMenuOpen = false;
     });
-
-    _exitMenuController.reverse().then((_) {
-      if (!mounted) return;
-
+    _exitMenuController.reverse();
+    Future.microtask(() {
       final node = _lastFocusBeforeExitMenu;
       _lastFocusBeforeExitMenu = null;
-
-      if (node != null && node.canRequestFocus && node.context != null) {
+      if (node != null && node.canRequestFocus) {
         node.requestFocus();
       } else {
         _restoreLastContentFocus();
@@ -587,7 +559,7 @@ class _MainScreenState extends State<MainScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Ilovadan chiqasizmi?',
+                            'Ilovadan chiqasizmi? ',
                             style: GoogleFonts.roboto(
                               color: Colors.white,
                               fontSize: 18,
@@ -627,192 +599,6 @@ class _MainScreenState extends State<MainScreen>
     );
   }
 
-  Widget _buildMenuItem(int index) {
-    final item = _menuItems[index];
-    final isCurrentScreen = _selectedIndex == index;
-    final isHighlighted = _sidebarHighlightedIndex == index;
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color:
-            isCurrentScreen
-                ? Colors.white.withOpacity(0.15)
-                : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-        border:
-            isHighlighted
-                ? Border.all(color: Colors.white.withOpacity(0.8), width: 2)
-                : null,
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          focusColor: Colors.white.withOpacity(0.12),
-          hoverColor: Colors.white.withOpacity(0.06),
-          highlightColor: Colors.white.withOpacity(0.08),
-          onTap: () => _onMenuItemSelected(index),
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            height: 56,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                Icon(
-                  isCurrentScreen ? item['activeIcon'] : item['icon'],
-                  color: Colors.white,
-                  size: 24,
-                ),
-                if (_isSidebarExpanded) ...[
-                  const SizedBox(width: 24),
-                  Expanded(
-                    child: Text(
-                      item['label'],
-                      style: GoogleFonts.roboto(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight:
-                            isCurrentScreen ? FontWeight.w600 : FontWeight.w400,
-                      ),
-                      overflow: TextOverflow.fade,
-                      maxLines: 1,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSidebar() {
-    return AnimatedBuilder(
-      animation: _expandAnimation,
-      builder: (context, child) {
-        final width =
-            _sidebarCollapsedWidth +
-            (_expandAnimation.value *
-                (_sidebarExpandedWidth - _sidebarCollapsedWidth));
-        return Container(
-          width: width,
-          decoration: const BoxDecoration(color: Color(0xFF212121)),
-          child: FocusTraversalGroup(
-            policy: OrderedTraversalPolicy(),
-            child: Focus(
-              focusNode: _sidebarFocusNode,
-              onKeyEvent: _handleSidebarKeyEvent,
-              child: Column(
-                children: [
-                  // Logo
-                  Container(
-                    height: 64,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: Colors.red,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(
-                            Icons.play_arrow,
-                            color: Colors.white,
-                            size: 28,
-                          ),
-                        ),
-                        if (_isSidebarExpanded) ...[
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Text(
-                              'TPlay TV',
-                              style: GoogleFonts.roboto(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w500,
-                                color: Colors.white,
-                              ),
-                              overflow: TextOverflow.fade,
-                              maxLines: 1,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-
-                  Container(height: 1, color: Colors.white.withOpacity(0.1)),
-
-                  const SizedBox(height: 8),
-
-                  // Menu items
-                  Expanded(
-                    child: ListView.builder(
-                      padding: EdgeInsets.zero,
-                      itemCount: _menuItems.length,
-                      itemBuilder: (context, index) => _buildMenuItem(index),
-                    ),
-                  ),
-
-                  // Settings
-                  Container(
-                    margin: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.transparent,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        focusColor: Colors.white.withOpacity(0.12),
-                        hoverColor: Colors.white.withOpacity(0.06),
-                        highlightColor: Colors.white.withOpacity(0.08),
-                        onTap: () {},
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          height: 56,
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.settings_outlined,
-                                color: Colors.white,
-                                size: 24,
-                              ),
-                              if (_isSidebarExpanded) ...[
-                                const SizedBox(width: 24),
-                                Expanded(
-                                  child: Text(
-                                    'Sozlamalar',
-                                    style: GoogleFonts.roboto(
-                                      color: Colors.white,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w400,
-                                    ),
-                                    overflow: TextOverflow.fade,
-                                    maxLines: 1,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 8),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
@@ -825,20 +611,14 @@ class _MainScreenState extends State<MainScreen>
             FocusTraversalGroup(
               policy: ReadingOrderTraversalPolicy(),
               child: Focus(
-                // MUHIM: bu yerda endi autofocus=false
-                autofocus: false,
+                autofocus: true,
                 focusNode: _contentFocusNode,
                 onKeyEvent: _handleContentKeyEvent,
                 skipTraversal: false,
                 descendantsAreFocusable: true,
                 child: AnimatedContainer(
-                  duration: _animationDuration,
-                  margin: EdgeInsets.only(
-                    left:
-                        _isSidebarExpanded
-                            ? _sidebarExpandedWidth
-                            : _sidebarCollapsedWidth,
-                  ),
+                  duration: const Duration(milliseconds: 200),
+                  margin: EdgeInsets.only(left: _isSidebarExpanded ? 240 : 72),
                   child: IndexedStack(
                     index: _selectedIndex,
                     children: _screens,
@@ -848,7 +628,210 @@ class _MainScreenState extends State<MainScreen>
             ),
 
             // Sidebar
-            _buildSidebar(),
+            AnimatedBuilder(
+              animation: _expandAnimation,
+              builder: (context, child) {
+                final width = 72 + (_expandAnimation.value * 168);
+                return Container(
+                  width: width,
+                  decoration: const BoxDecoration(color: Color(0xFF212121)),
+                  child: FocusTraversalGroup(
+                    policy: OrderedTraversalPolicy(),
+                    child: Focus(
+                      focusNode: _sidebarFocusNode,
+                      onKeyEvent: _handleSidebarKeyEvent,
+                      child: Column(
+                        children: [
+                          // Logo
+                          Container(
+                            height: 64,
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    color: Colors.red,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(
+                                    Icons.play_arrow,
+                                    color: Colors.white,
+                                    size: 28,
+                                  ),
+                                ),
+                                if (_isSidebarExpanded) ...[
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Text(
+                                      'TPlay TV',
+                                      style: GoogleFonts.roboto(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w500,
+                                        color: Colors.white,
+                                      ),
+                                      overflow: TextOverflow.fade,
+                                      maxLines: 1,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+
+                          Container(
+                            height: 1,
+                            color: Colors.white.withOpacity(0.1),
+                          ),
+
+                          const SizedBox(height: 8),
+
+                          // Menu items
+                          Expanded(
+                            child: ListView.builder(
+                              padding: EdgeInsets.zero,
+                              itemCount: _menuItems.length,
+                              itemBuilder: (context, index) {
+                                final item = _menuItems[index];
+                                final isCurrentScreen = _selectedIndex == index;
+                                final isHighlighted =
+                                    _sidebarHighlightedIndex == index;
+
+                                return Container(
+                                  margin: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color:
+                                        isCurrentScreen
+                                            ? Colors.white.withOpacity(0.15)
+                                            : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border:
+                                        isHighlighted
+                                            ? Border.all(
+                                              color: Colors.white.withOpacity(
+                                                0.8,
+                                              ),
+                                              width: 2,
+                                            )
+                                            : null,
+                                  ),
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      focusColor: Colors.white.withOpacity(
+                                        0.12,
+                                      ),
+                                      hoverColor: Colors.white.withOpacity(
+                                        0.06,
+                                      ),
+                                      highlightColor: Colors.white.withOpacity(
+                                        0.08,
+                                      ),
+                                      onTap: () => _onMenuItemSelected(index),
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Container(
+                                        height: 56,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              isCurrentScreen
+                                                  ? item['activeIcon']
+                                                  : item['icon'],
+                                              color: Colors.white,
+                                              size: 24,
+                                            ),
+                                            if (_isSidebarExpanded) ...[
+                                              const SizedBox(width: 24),
+                                              Expanded(
+                                                child: Text(
+                                                  item['label'],
+                                                  style: GoogleFonts.roboto(
+                                                    color: Colors.white,
+                                                    fontSize: 14,
+                                                    fontWeight:
+                                                        isCurrentScreen
+                                                            ? FontWeight.w600
+                                                            : FontWeight.w400,
+                                                  ),
+                                                  overflow: TextOverflow.fade,
+                                                  maxLines: 1,
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+
+                          // Settings
+                          Container(
+                            margin: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.transparent,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                focusColor: Colors.white.withOpacity(0.12),
+                                hoverColor: Colors.white.withOpacity(0.06),
+                                highlightColor: Colors.white.withOpacity(0.08),
+                                onTap: () {},
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
+                                  height: 56,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.settings_outlined,
+                                        color: Colors.white,
+                                        size: 24,
+                                      ),
+                                      if (_isSidebarExpanded) ...[
+                                        const SizedBox(width: 24),
+                                        Expanded(
+                                          child: Text(
+                                            'Sozlamalar',
+                                            style: GoogleFonts.roboto(
+                                              color: Colors.white,
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w400,
+                                            ),
+                                            overflow: TextOverflow.fade,
+                                            maxLines: 1,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 8),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
 
             // Exit menu
             _buildExitMenuOverlay(),

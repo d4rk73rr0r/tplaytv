@@ -28,7 +28,7 @@ final customCacheManager = CacheManager(
 // Yordamchi: navigator popdan keyin fokusni tiklash uchun
 void _requestIndexFocus(BuildContext context) {
   final state = context.findAncestorStateOfType<IndexScreenContentState>();
-  state?._requestContentFocus();
+  state?.requestFocus();
 }
 
 // Holatni boshqarish uchun Provider
@@ -226,6 +226,13 @@ class IndexScreenContentState extends State<IndexScreenContent> {
   final GlobalKey _genresKey = GlobalKey();
   final Map<int, GlobalKey> _categoryKeys = {};
 
+  void _debugLog(String message) {
+    assert(() {
+      debugPrint(message);
+      return true;
+    }());
+  }
+
   @override
   void initState() {
     super.initState();
@@ -257,43 +264,48 @@ class IndexScreenContentState extends State<IndexScreenContent> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted &&
-          !_contentFocusNode.hasFocus &&
-          ModalRoute.of(context)?.isCurrent == true) {
-        _contentFocusNode.requestFocus();
-        debugPrint('🎯 IndexScreen: Focus requested (didChangeDependencies)');
-      }
-    });
+    // Focus restoration parent (MainScreen) tomonidan boshqariladi
   }
 
   @override
   void didUpdateWidget(IndexScreenContent oldWidget) {
     super.didUpdateWidget(oldWidget);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted &&
-          !_contentFocusNode.hasFocus &&
-          ModalRoute.of(context)?.isCurrent == true) {
-        _contentFocusNode.requestFocus();
-        debugPrint('🎯 IndexScreen: Focus requested (didUpdateWidget)');
-      }
-    });
-  }
-
-  void _requestContentFocus() {
-    Future.microtask(() {
-      if (mounted) {
-        _contentFocusNode.requestFocus();
-        debugPrint(
-          '🎯 IndexScreen: Focus requested (hasFocus: ${_contentFocusNode.hasFocus})',
-        );
-      }
-    });
+    // Focus restorationni bu yerda manipulyatsiya qilmaymiz
   }
 
   /// Public method that MainScreen calls
   void requestFocus() {
-    _requestContentFocus();
+    _debugLog('🎯 IndexScreen: requestFocus called');
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        _debugLog('🎯 IndexScreen: not mounted, skipping focus request');
+        return;
+      }
+
+      if (_contentFocusNode.canRequestFocus) {
+        _contentFocusNode.requestFocus();
+        _debugLog(
+          '🎯 IndexScreen: focus requested '
+          '(hasFocus=${_contentFocusNode.hasFocus}, '
+          'canRequestFocus=${_contentFocusNode.canRequestFocus})',
+        );
+      } else {
+        _debugLog(
+          '🎯 IndexScreen: cannot request focus now, will retry after 50ms',
+        );
+        Future.delayed(const Duration(milliseconds: 50), () {
+          if (!mounted) return;
+          if (_contentFocusNode.canRequestFocus) {
+            _contentFocusNode.requestFocus();
+            _debugLog('🎯 IndexScreen: retry focus request successful');
+          } else {
+            _debugLog(
+              '🎯 IndexScreen: retry focus request failed (still cannot request)',
+            );
+          }
+        });
+      }
+    });
   }
 
   @override
@@ -486,7 +498,7 @@ class IndexScreenContentState extends State<IndexScreenContent> {
 
     provider.reset();
     await _fetchInitialData();
-    _requestContentFocus();
+    requestFocus();
   }
 
   Future<List<dynamic>> _processFilms(List<dynamic> newFilms) async {
@@ -701,7 +713,7 @@ class IndexScreenContentState extends State<IndexScreenContent> {
       return KeyEventResult.handled;
     }
 
-    // LEFT – faqat BANNERS chap chekkasida parentga uzatamiz
+    // LEFT – faqat chap chekkasida parentga uzatamiz
     if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
       if (_selectedItemIndex > 0) {
         setState(() {
@@ -711,19 +723,9 @@ class IndexScreenContentState extends State<IndexScreenContent> {
         return KeyEventResult.handled;
       }
 
-      // Bu yerga faqat _selectedItemIndex == 0 bo‘lganda tushamiz.
-      // Faqat banners bo‘limi (ekran chap chekkasi) bo‘lsa, parentga uzatamiz.
-      final bannersNotEmpty = provider.banners.isNotEmpty;
-      const bannerSectionIndex = 0; // banners bo‘lsa, har doim 0
-
-      if (bannersNotEmpty && _selectedSectionIndex == bannerSectionIndex) {
-        // Parentga forwarding – MainScreen arrowLeftni ko‘rib Sidebar ochadi.
-        return KeyEventResult.ignored;
-      }
-
-      // Boshqa bo‘limlarda chekkaga kelganda ham Sidebar ochilmasin:
-      // hech narsa qilmaymiz, lekin handled qaytaramiz.
-      return KeyEventResult.handled;
+      // Bu yerga faqat _selectedItemIndex == 0 bo'lganda tushamiz.
+      // Chap chekkada bo'lsak, parentga uzatamiz sidebar ochish uchun
+      return KeyEventResult.ignored;
     }
 
     // ENTER/SELECT
@@ -780,7 +782,11 @@ class IndexScreenContentState extends State<IndexScreenContent> {
 
   Future<void> _pushAndRefocus(Widget page) async {
     await Navigator.push(context, createSlideRoute(page));
-    _requestContentFocus();
+    // Widget tree barqarorlashishi uchun biroz kutamiz
+    await Future.delayed(const Duration(milliseconds: 100));
+    if (mounted) {
+      requestFocus();
+    }
   }
 
   void _activateSelectedItem(IndexScreenProvider provider) {
@@ -1717,6 +1723,23 @@ class _GenresSectionState extends State<GenresSection> {
     }
   }
 
+  void _showErrorDialog(BuildContext context, String message) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text("Xato", style: TextStyle(fontSize: 22)),
+            content: Text(message, style: const TextStyle(fontSize: 18)),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("OK", style: TextStyle(fontSize: 18)),
+              ),
+            ],
+          ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<IndexScreenProvider>(context);
@@ -1816,23 +1839,6 @@ class _GenresSectionState extends State<GenresSection> {
           ),
         ],
       ),
-    );
-  }
-
-  void _showErrorDialog(BuildContext context, String message) {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text("Xato", style: TextStyle(fontSize: 22)),
-            content: Text(message, style: const TextStyle(fontSize: 18)),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("OK", style: TextStyle(fontSize: 18)),
-              ),
-            ],
-          ),
     );
   }
 }
